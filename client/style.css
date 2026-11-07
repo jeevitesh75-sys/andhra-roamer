@@ -48,7 +48,7 @@ h2{margin:0 0 10px}h2 small{color:var(--mut);font-weight:400;font-size:12px}
 #help{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);font-size:11px;color:rgba(255,255,255,.55);text-shadow:0 1px 3px #000;white-space:nowrap}
 #tags{position:fixed;inset:0;pointer-events:none;z-index:4;overflow:hidden}.tag{position:absolute;transform:translate(-50%,-100%);font-size:12px;font-weight:700;text-shadow:0 1px 3px #000,0 0 6px #000;white-space:nowrap;text-align:center}.tag small{display:block;font-weight:500;color:#ffd166;background:rgba(0,0,0,.55);border-radius:6px;padding:1px 6px;margin-bottom:2px;max-width:220px;white-space:normal}
 .jobCard{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:10px}.jobCard b{display:block}.jobCard small{color:var(--mut)}.jobCard .pay{color:#7dffb0;font-weight:800;font-size:18px;text-align:right}
-canvas#bigcanvas{width:100%;height:auto;max-height:72vh;border-radius:12px;background:#7fb4d6;display:block}.legend i{display:inline-block;width:18px;height:5px;margin:0 4px 2px 10px;border-radius:3px}.legend{font-size:12px;color:var(--mut)}
+canvas#bigcanvas{width:auto;height:auto;max-width:100%;max-height:72vh;margin:0 auto;border-radius:12px;background:#7fb4d6;display:block}.legend i{display:inline-block;width:18px;height:5px;margin:0 4px 2px 10px;border-radius:3px}.legend{font-size:12px;color:var(--mut)}
 #touch button{background:rgba(255,255,255,.18);border-radius:16px;font-size:18px;font-weight:800;padding:0;width:84px;height:84px}#touch .tl{position:absolute;left:12px;bottom:200px;display:flex;gap:10px}#touch .tr{position:absolute;right:12px;bottom:150px;display:flex;flex-direction:column;gap:10px}#touch .tm{position:absolute;right:12px;top:80px;display:flex;flex-direction:column;gap:8px}#touch .tm button{width:64px;height:44px;font-size:12px}
 @media (max-width:700px){#minimap{width:120px;height:120px}#dash{min-width:130px;padding:6px 10px}#speed{font-size:40px}#help,#chatlog{display:none}#jobPanel{width:200px;top:70px}}
 
@@ -65,3 +65,6 @@ canvas#bigcanvas{width:100%;height:auto;max-height:72vh;border-radius:12px;backg
 .is-touch #touch .tm{top:78px;right:10px;flex-direction:column;gap:6px}.is-touch #touch .tm button{width:68px;height:38px;font-size:12px}
 .is-touch #moneyBox{padding:5px 10px}.is-touch #money{font-size:18px}
 @media (orientation:portrait){.is-touch #dash{left:auto;right:10px;transform:none;bottom:150px}.is-touch #touch .tl{bottom:20px}.is-touch #touch .tr{bottom:20px}}
+
+canvas#bigcanvas{touch-action:none;cursor:grab}#minimap{pointer-events:auto;cursor:zoom-in}
+#bigmap .rowEnd button#mapZin,#bigmap .rowEnd button#mapZout{width:44px;font-size:20px;padding:6px 0}

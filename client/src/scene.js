@@ -44,7 +44,7 @@ export class Scene3D {
     this.cHorizon = new T.Color(); this.cZenith = new T.Color(); this.cSun = new T.Color(); this.tmpC = new T.Color();
     this.models3d = createModels(T);
     this._textures(); this._materials(); this._sky(); this._lights(); this._water(); this._envMap();
-    this._landmarks(); this._labels(); this._stations(); this._npcInit(); this._beacon();
+    this._landmarks(); this._labels(); this._stations(); this._initLamps(); this._npcInit(); this._beacon();
     this.resize();
   }
 
@@ -136,7 +136,7 @@ export class Scene3D {
     this._reg(this.mWater, 1.2);
     this.waterSize = 7000; this.texWater.repeat.set(this.waterSize / 60, this.waterSize / 60);
     this.water = new T.Mesh(new T.PlaneGeometry(this.waterSize, this.waterSize), this.mWater);
-    this.water.rotation.x = -Math.PI / 2; this.water.position.y = 0; this.water.renderOrder = 1; this.scene.add(this.water);
+    this.water.rotation.x = -Math.PI / 2; this.water.position.y = -0.7; this.water.renderOrder = 1; this.scene.add(this.water);
   }
   _envMap() {
     const T = this.T;
@@ -210,6 +210,36 @@ export class Scene3D {
     const pole = mk(new T.CylinderGeometry(0.25, 0.25, 11, 8), 0x999999, 5.5), d = new T.Object3D(); L.forEach((s, i) => { d.position.set(s.x + 9, 5.5, s.z + 6); d.updateMatrix(); pole.setMatrixAt(i, d.matrix); }); pole.instanceMatrix.needsUpdate = true;
     { const sg = mk(new T.BoxGeometry(3.2, 1.8, 0.4), 0xd63031, 10.5), dd = new T.Object3D(); L.forEach((s, i) => { dd.position.set(s.x + 9, 10.5, s.z + 6); dd.updateMatrix(); sg.setMatrixAt(i, dd.matrix); }); sg.instanceMatrix.needsUpdate = true; }
   }
+  /** street lamps: shared geometry/material, instanced per chunk. Lit heads + additive light pools on the road at night. */
+  _initLamps() {
+    const T = this.T;
+    this.lampGeos = new Set();
+    this.lampPole = new T.CylinderGeometry(0.08, 0.13, 8, 6); this.lampHead = new T.BoxGeometry(0.5, 0.22, 1.5); this.lampPool = new T.PlaneGeometry(20, 20);
+    for (const g of [this.lampPole, this.lampHead, this.lampPool]) this.lampGeos.add(g);
+    const glow = this._canvasTex(128, 128, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(255,214,140,1)'); g.addColorStop(0.35, 'rgba(255,190,100,0.45)'); g.addColorStop(1, 'rgba(255,170,80,0)'); x.fillStyle = g; x.fillRect(0, 0, w, h); });
+    glow.wrapS = glow.wrapT = T.ClampToEdgeWrapping;
+    this.mLampPole = this._reg(new T.MeshStandardMaterial({ color: 0x6d7378, roughness: 0.7, metalness: 0.4 }), 0.4);
+    this.mLampHead = new T.MeshBasicMaterial({ color: 0xffe4a0 });
+    this.mLampPool = new T.MeshBasicMaterial({ map: glow, transparent: true, opacity: 0, depthWrite: false, blending: T.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    this._lp = {};
+  }
+  _chunkLamps(grp, x0, z0) {
+    const T = this.T, w = this.world, runs = w.roadsInRect(x0, z0, x0 + CHUNK, z0 + CHUNK, 5), P = [];
+    for (const u of runs) {
+      const r = u.road, sp = r.cls <= 1 ? 45 : r.cls <= 4 ? 36 : 32, sEnd = r.cum[u.b];
+      for (let s = Math.ceil(r.cum[u.a] / sp) * sp; s <= sEnd; s += sp) {
+        const side = Math.floor(s / sp) % 2 ? 1 : -1, p = w.roadPoint(r, s, 0, this._lp), off = (r.halfW + 1.3) * side;
+        const x = p.x + Math.cos(p.h) * off, z = p.z - Math.sin(p.h) * off;
+        if (x < x0 || x >= x0 + CHUNK || z < z0 || z >= z0 + CHUNK) continue;
+        P.push({ x, z, h: p.h, inx: -Math.cos(p.h) * side, inz: Math.sin(p.h) * side, hw: r.halfW });
+      }
+    }
+    if (!P.length) return;
+    const mk = (geo, mat, f) => { const im = new T.InstancedMesh(geo, mat, P.length), d = new T.Object3D(); P.forEach((q, i) => { f(d, q); d.updateMatrix(); im.setMatrixAt(i, d.matrix); }); im.instanceMatrix.needsUpdate = true; im.frustumCulled = false; grp.add(im); return im; };
+    mk(this.lampPole, this.mLampPole, (d, q) => { d.position.set(q.x, 4, q.z); d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1); });
+    mk(this.lampHead, this.mLampHead, (d, q) => { d.position.set(q.x + q.inx * 0.7, 8.1, q.z + q.inz * 0.7); d.rotation.set(0, q.h, 0); d.scale.set(1, 1, 1); });
+    mk(this.lampPool, this.mLampPool, (d, q) => { d.position.set(q.x + q.inx * q.hw * 0.7, 0.25, q.z + q.inz * q.hw * 0.7); d.rotation.set(-Math.PI / 2, 0, 0); d.scale.set(1, 1, 1); });
+  }
   _beacon() {
     const T = this.T;
     this.beacon = new T.Group(); this.beacon.visible = false;
@@ -263,6 +293,7 @@ export class Scene3D {
       const x0 = cx * CHUNK, z0 = cz * CHUNK, x1 = x0 + CHUNK, z1 = z0 + CHUNK;
       const bg = osmBuildings(w.buildingsInRect(x0, z0, x1, z1), x0, z0);
       if (bg) { const bm = new T.Mesh(this._geo(bg), this.mBuilding); bm.position.set(x0, 0, z0); bm.castShadow = true; bm.receiveShadow = true; grp.add(bm); }
+      this._chunkLamps(grp, x0, z0);
       const rg = osmRoads(w.roadsInRect(x0, z0, x1, z1), x0, z0);
       if (rg.lo) { const rm = new T.Mesh(this._geo(rg.lo), this.mStreet); rm.position.set(x0, 0, z0); rm.receiveShadow = true; grp.add(rm); }
       if (rg.hi) { const rm = new T.Mesh(this._geo(rg.hi), this.mHighway); rm.position.set(x0, 0, z0); rm.receiveShadow = true; grp.add(rm); }
@@ -283,7 +314,7 @@ export class Scene3D {
   }
   _dropChunk(key) {
     const g = this.chunks.get(key); this.scene.remove(g);
-    g.traverse(o => { if (o.geometry && o.geometry !== this.geoRound && o.geometry !== this.geoPalm) o.geometry.dispose(); if (o.isInstancedMesh && o.dispose) o.dispose(); });
+    g.traverse(o => { if (o.geometry && o.geometry !== this.geoRound && o.geometry !== this.geoPalm && !this.lampGeos.has(o.geometry)) o.geometry.dispose(); if (o.isInstancedMesh && o.dispose) o.dispose(); });
     this.chunks.delete(key);
   }
   /** budget = chunks to build this call (use a large number for the initial load) */
@@ -373,6 +404,7 @@ export class Scene3D {
     this.moon.position.set(focus.x + lx * 100, focus.y + Math.abs(ly) * 100 + 20, focus.z + lz * 100); this.moon.intensity = 0.55 * (1 - dayf);
     this.renderer.toneMappingExposure = lerp(1.25, 0.95, dayf);
     this.mBuilding.emissiveIntensity = (1 - smooth(-0.05, 0.12, el)) * 1.6;
+    { const night = 1 - smooth(-0.1, 0.16, el); if (this.mLampPool) { this.mLampPool.opacity = night * 0.95; this.mLampHead.color.setRGB(lerp(0.42, 1.0, night), lerp(0.4, 0.88, night), lerp(0.36, 0.55, night)); } }
     const ei = 0.12 + 0.88 * dayf;
     if (Math.abs(ei - this.lastEnv) > 0.01) {
       this.lastEnv = ei;

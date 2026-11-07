@@ -108,6 +108,7 @@ async function startGame() {
   G.net.disconnect();
   if (url) G.net.connect(url, { name: prof.name, veh: prof.veh, color: prof.color, room: prof.region + '-' + (prof.room || 'open') });
   else onNetStatus('offline', 'Offline mode (no server URL set)');
+  if (G.dayShift === undefined) G.dayShift = 0.07 * CYCLE_SEC - (G.net ? G.net.now() : Date.now()) / 1000; // every player starts in the morning
   G.running = true; G.paused = false; G.lastT = performance.now(); G.acc = 0;
   if (!G.started) { G.started = true; requestAnimationFrame(frame); }
   toast(`Welcome to ${c.name}! Press J for jobs, M for the map`, 3500);
@@ -149,6 +150,26 @@ function initInput() {
   addEventListener('mousemove', e => { if (!drag) return; G.orbit -= (e.clientX - lx) * 0.006; G.orbitY = clamp(G.orbitY + (e.clientY - ly) * 0.02, -1, 5); lx = e.clientX; ly = e.clientY; G.lastDrag = performance.now(); });
   $('game').addEventListener('wheel', e => { G.zoom = clamp(G.zoom * (e.deltaY > 0 ? 1.08 : 0.92), 0.6, 1.9); }, { passive: true });
   addEventListener('resize', () => G.scene && G.scene.resize());
+  // minimap zoom: tap / wheel / + -
+  const MINI = [250, 450, 650, 1000, 1600, 2800], mini = d => { let i = MINI.indexOf(G.miniR || 650); if (i < 0) i = 2; G.miniR = MINI[clamp(i + d, 0, MINI.length - 1)]; toast('Minimap ' + (G.miniR >= 1000 ? (G.miniR / 500).toFixed(1) + ' km' : G.miniR * 2 + ' m') + ' wide', 900); };
+  $('minimap').addEventListener('click', () => { const i = MINI.indexOf(G.miniR || 650); if (i >= MINI.length - 1) G.miniR = MINI[0]; else mini(1); });
+  $('minimap').addEventListener('wheel', e => { e.preventDefault(); mini(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+  addEventListener('keydown', e => { if (typing() || !G.running) return; if (e.code === 'Equal' || e.code === 'NumpadAdd') { if (modalOpen()) bigZoom(1.4); else mini(-1); } if (e.code === 'Minus' || e.code === 'NumpadSubtract') { if (modalOpen()) bigZoom(1 / 1.4); else mini(1); } });
+  // big map: buttons, wheel, drag to pan, pinch to zoom
+  const cv = $('bigcanvas'), ptr = new Map(); let pinch = 0;
+  const M = () => G.mapV || (G.mapV = { zoom: 1, cx: null, cz: null });
+  const bigZoom = f => { const m = M(); if (m.cx === null) { m.cx = G.veh.x; m.cz = G.veh.z; } m.zoom = clamp(m.zoom * f, 1, 60); if (m.zoom < 1.01) { m.zoom = 1; m.cx = m.cz = null; } drawBigMap(); };
+  window.__bigZoom = bigZoom;
+  $('mapZin').onclick = () => bigZoom(1.6); $('mapZout').onclick = () => bigZoom(1 / 1.6); $('mapZreset').onclick = () => { G.mapV = { zoom: 1, cx: null, cz: null }; drawBigMap(); };
+  cv.addEventListener('wheel', e => { e.preventDefault(); bigZoom(e.deltaY < 0 ? 1.25 : 0.8); }, { passive: false });
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinch = 0; });
+  cv.addEventListener('pointerup', e => { ptr.delete(e.pointerId); pinch = 0; }); cv.addEventListener('pointercancel', e => { ptr.delete(e.pointerId); pinch = 0; });
+  cv.addEventListener('pointermove', e => {
+    const p = ptr.get(e.pointerId); if (!p) return; const m = M(), k = cv.width / cv.clientWidth;
+    if (ptr.size === 2) { const [a, b] = [...ptr.values()]; ptr.set(e.pointerId, { x: e.clientX, y: e.clientY }); const [c2, d2] = [...ptr.values()], dist = Math.hypot(c2.x - d2.x, c2.y - d2.y); if (pinch) bigZoom(dist / pinch); pinch = dist; return; }
+    if (m.zoom <= 1) return; const base = Math.min(cv.width / G.world.WORLD.w, cv.height / G.world.WORLD.h) * 0.97 * m.zoom;
+    m.cx = clamp(m.cx - (e.clientX - p.x) * k / base, 0, G.world.WORLD.w); m.cz = clamp(m.cz - (e.clientY - p.y) * k / base, 0, G.world.WORLD.h); p.x = e.clientX; p.y = e.clientY; drawBigMap();
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden) G.keys = {}; });
   for (const b of document.querySelectorAll('#touch button')) {
     const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); };
@@ -189,7 +210,7 @@ function togglePause(v) { closeModals(); $('pause').hidden = !v; G.paused = v; $
 function toggleMap() { const open = $('bigmap').hidden; closeModals(); $('bigmap').hidden = !open; if (open) drawBigMap(); }
 function toggleGarage() { const open = $('garage').hidden; closeModals(); $('garage').hidden = !open; }
 function toggleBoard() { const open = $('board').hidden; closeModals(); if (!open) return; $('board').hidden = false; renderBoard(); }
-function drawBigMap() { const c = $('bigcanvas'); G.map.draw(c.getContext('2d'), c.width, c.height, { full: true, zoomLabels: true, me: G.veh, target: G.runner && G.runner.target, players: remotePins() }); }
+function drawBigMap() { const c = $('bigcanvas'), M = G.mapV || (G.mapV = { zoom: 1, cx: null, cz: null }); G.map.draw(c.getContext('2d'), c.width, c.height, { full: true, zoom: M.zoom, mcx: M.cx, mcz: M.cz, me: G.veh, target: G.runner && G.runner.target, players: remotePins() }); }
 function remotePins() { const out = []; if (!G.net) return out; for (const r of G.net.remotes.values()) { const s = r.snaps[r.snaps.length - 1]; if (s) out.push({ x: s.x, z: s.z, color: r.color, name: r.name }); } return out; }
 function renderPlayers() {
   const rows = [{ name: G.profile.name + ' (you)', veh: G.veh.type, money: G.money }, ...(G.net ? [...G.net.remotes.values()].map(r => ({ name: r.name, veh: r.veh, money: r.money })) : [])];
@@ -331,7 +352,7 @@ function updateHud(dt, info, serverSec) {
   const f = clamp(v.fuel / v.spec.tank, 0, 1); $('fuelBar').style.width = '100%'; $('fuelBar').style.clipPath = `inset(0 ${100 - f * 100}% 0 0)`;
   $('fuelTxt').textContent = `FUEL ${Math.round(v.fuel)} / ${v.spec.tank} L`; $('fuelTxt').parentElement.classList.toggle('low', f < 0.15);
   $('money').textContent = rs(G.money); $('rank').textContent = rankFor(G.earned);
-  const tod = todOf(serverSec) * 24, hh = Math.floor(tod), mm = Math.floor((tod - hh) * 60);
+  const tod = todOf(serverSec + (G.dayShift || 0)) * 24, hh = Math.floor(tod), mm = Math.floor((tod - hh) * 60);
   $('clock').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}  ·  ${v.surf === SURF.ROAD || v.surf === SURF.STREET ? 'road' : v.surf === SURF.WATER ? 'water!' : 'off-road'}`;
   const { city, dist } = nearestCityInfo(), nr = G.world.nearestRoad(v.x, v.z), onRoad = nr && nr.d < nr.halfW + 3 ? nr.road.ref : '';
   $('where').textContent = dist < city.R ? `${city.name}${city.te ? ' · ' + city.te : ''}` : `${(dist * 0.001).toFixed(1)} km from ${city.name}${onRoad ? ' · ' + onRoad : ''}`;
@@ -357,7 +378,7 @@ function frame(now) {
   G.fpsAcc += dt; G.fpsN++; if (G.fpsAcc > 3) { G.fps = G.fpsN / G.fpsAcc; G.fpsAcc = 0; G.fpsN = 0; autoQuality(); }
   if (!G.paused) { G.acc += dt; let n = 0; while (G.acc >= FIXED_DT && n < MAX_STEPS) { stepSim(FIXED_DT); G.acc -= FIXED_DT; n++; } if (n === MAX_STEPS) G.acc = 0; }
   const v = G.veh, pose = poseOf(clamp(G.acc / FIXED_DT, 0, 1), G.tmp.pose || (G.tmp.pose = {}));
-  const serverSec = (G.net ? G.net.now() : Date.now()) / 1000, tod = todOf(serverSec);
+  const serverSec = (G.net ? G.net.now() : Date.now()) / 1000, tod = todOf(serverSec + (G.dayShift || 0));
   const info = G.scene.update(dt, { x: pose.x, y: pose.y, z: pose.z }, tod, serverSec);
   G.scene.updateChunks(pose.x, pose.z, 1);
   const lightsOn = G.lights === 'on' || (G.lights === 'auto' && info.night);
@@ -369,7 +390,7 @@ function frame(now) {
   if (G.net) G.net.sendState(v, flags);
   G.audio.update(v.rpm, G.paused ? 0 : Math.max(0, G.keys.KeyW || G.keys.ArrowUp || G.touch.gas ? 1 : 0), v.skid * (v.speed > 3 ? 1 : 0), v.type);
   if ((G.hudT += dt) > 0.066) { G.hudT = 0; updateHud(dt, info, serverSec); }
-  if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, cx: v.x, cz: v.z, radius: 650, me: v, target: G.runner && G.runner.target, players: remotePins() }); if (!$('bigmap').hidden) drawBigMap(); }
+  if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, cx: v.x, cz: v.z, radius: G.miniR || 650, me: v, target: G.runner && G.runner.target, players: remotePins() }); if (!$('bigmap').hidden) drawBigMap(); }
   if ((G.saveT += dt) > 6) { G.saveT = 0; persist(); } if ((G.moneyT += dt) > 5) { G.moneyT = 0; if (G.net) G.net.sendMoney(G.earned); }
 }
 function autoQuality() {

@@ -157,7 +157,7 @@ export function createOsmWorld(data) {
   function surfaceAt(x, z, h = heightAt(x, z)) {
     const nr = nearestRoad(x, z, 8);
     if (nr && nr.d < nr.halfW) return nr.road.cls <= 4 ? SURF.ROAD : nr.road.cls === 8 ? SURF.DIRT : SURF.STREET;
-    if (h < -0.4) return SURF.WATER;
+    if (h < -0.7) return SURF.WATER;
     const c = lc(Math.floor(x / meta.cell), Math.floor(z / meta.cell));
     return c === 7 ? SURF.SAND : c === 3 || c === 8 ? SURF.DIRT : c === 2 || c === 6 ? SURF.STREET : SURF.GRASS;
   }

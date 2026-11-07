@@ -27,7 +27,7 @@ export class MapView {
   draw(ctx, W, H, opts) {
     const w = this.w, full = opts.full, WD = w.WORLD, cell = w.meta.cell;
     const view = full
-      ? (() => { const sc = Math.min(W / WD.w, H / WD.h) * 0.97; return { sc, ox: W / 2 - (WD.w * sc) / 2, oz: H / 2 - (WD.h * sc) / 2 }; })()
+      ? (() => { const z = opts.zoom || 1, sc = Math.min(W / WD.w, H / WD.h) * 0.97 * z, mx = opts.mcx ?? WD.w / 2, mz = opts.mcz ?? WD.h / 2; return { sc, ox: W / 2 - mx * sc, oz: H / 2 - mz * sc, z }; })()
       : (() => { const sc = Math.min(W, H) / (opts.radius * 2); return { sc, ox: W / 2 - opts.cx * sc, oz: H / 2 - opts.cz * sc }; })();
     const X = x => x * view.sc + view.ox, Z = z => z * view.sc + view.oz, sc = view.sc;
     ctx.save(); ctx.clearRect(0, 0, W, H);
@@ -36,7 +36,11 @@ export class MapView {
     const land = this._landCanvas(); ctx.imageSmoothingEnabled = true;
     ctx.drawImage(land, X(0), Z(0), land.width * this.f * cell * sc, land.height * this.f * cell * sc);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    if (full) {
+    if (full && (opts.zoom || 1) > 1.001) { // zoomed: draw the visible part directly, with more road classes as you zoom in
+      const x0 = -view.ox / sc, z0 = -view.oz / sc, x1 = x0 + W / sc, z1 = z0 + H / sc, maxCls = view.z > 12 ? 7 : view.z > 5 ? 5 : view.z > 2.5 ? 4 : 3;
+      const runs = w.roadsInRect(Math.max(0, x0), Math.max(0, z0), Math.min(WD.w, x1), Math.min(WD.h, z1), maxCls);
+      this._drawRuns(ctx, runs, X, Z, sc, 0, true); this._drawRuns(ctx, runs, X, Z, sc, 1, true);
+    } else if (full) {
       if (!this.fullRoads || this.fullRoads.key !== W + 'x' + H) { // cache the road layer: only the bigger roads, drawn once
         const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.lineCap = 'round'; x.lineJoin = 'round';
         const runs = w.roadsInRect(0, 0, WD.w, WD.h, 4);
@@ -57,7 +61,7 @@ export class MapView {
       const rad = full ? 2.5 + city.tier * 1.6 : 3 + city.tier * 1.2;
       ctx.fillStyle = '#2c3e50'; ctx.beginPath(); ctx.arc(x, z, rad, 0, 7); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, z, rad - 1.5, 0, 7); ctx.fill();
-      if (full ? city.tier >= 1 || opts.zoomLabels : true) {
+      if (full ? city.tier >= 1 || (opts.zoom || 1) > 3 : true) {
         ctx.font = `600 ${full ? 11 : 10}px system-ui, sans-serif`; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)';
         ctx.strokeText(city.name, x, z - rad - 7); ctx.fillStyle = '#1b2a38'; ctx.fillText(city.name, x, z - rad - 7);
       }
