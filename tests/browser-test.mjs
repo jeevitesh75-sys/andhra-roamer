@@ -14,11 +14,14 @@ const mk = async (name) => { const pg = await b.newPage({viewport:{width:1280,he
   await pg.route('**/three.module.js',r=>r.fulfill({contentType:'text/javascript',body:mock}));
   await pg.goto('http://localhost:8098/'); await pg.waitForSelector('#menu:not([hidden])',{timeout:20000}); await pg.fill('#name',name); return {pg,errs}; };
 const A = await mk('Ravi'), B = await mk('Sita');
-for (const {pg} of [A,B]) { await pg.fill('#room','test'); await pg.click('#startBtn').catch(async()=>{await pg.click('button:has-text("Start")')}); }
-await A.pg.waitForTimeout(6000);
-await A.pg.keyboard.down('KeyW'); await A.pg.waitForTimeout(2500); await A.pg.keyboard.up('KeyW');
+for (const {pg} of [A,B]) { await pg.fill('#room','test'); await pg.selectOption('#region','vizag'); await pg.waitForTimeout(800); await pg.click('#startBtn').catch(async()=>{await pg.click('button:has-text("Start")')}); }
+const info = async ({pg}) => pg.evaluate(()=>{const g=window.__game; const nr=g.world.nearestRoad(g.veh.x,g.veh.z); return {region:g.world.meta.id, room:g.net.room, remotes:[...g.net.remotes.values()].map(r=>r.name), x:Math.round(g.veh.x), z:Math.round(g.veh.z), speed:+g.veh.speed.toFixed(1), surf:g.veh.surf, roadD:nr&&+nr.d.toFixed(1), fuel:+g.veh.fuel.toFixed(1)}});
+await A.pg.waitForTimeout(9000);
+await A.pg.keyboard.down('KeyW'); await A.pg.waitForTimeout(3000); await A.pg.keyboard.up('KeyW');
+console.log('A after W',await info(A));
+await A.pg.keyboard.down('KeyS'); await A.pg.waitForTimeout(3500); await A.pg.keyboard.up('KeyS'); await A.pg.keyboard.down('KeyS'); await A.pg.waitForTimeout(2500);
+console.log('A after S (should be braking then reversing)',await info(A), 'u=',await A.pg.evaluate(()=>+window.__game.veh.u.toFixed(2)), 'gear=',await A.pg.textContent('#gear')); await A.pg.keyboard.up('KeyS');
 console.log('early errs',A.errs.slice(0,6),B.errs.slice(0,3));
-const info = async ({pg}) => pg.evaluate(()=>({remotes:[...window.__game.net.remotes.values()].map(r=>r.name), x:window.__game.veh.x, speed:window.__game.veh.speed, money:window.__game.money}));
 console.log('A',await info(A)); console.log('B',await info(B));
 await A.pg.screenshot({path:'/tmp/claude-0/-home-claude/37f8f6fa-367a-55a3-a419-14b2d6ce60d5/scratchpad/hud.png'});
 console.log('errors A',A.errs.slice(0,5)); console.log('errors B',B.errs.slice(0,5));

@@ -3,8 +3,8 @@ import { mulberry32, strHash } from './noise.js';
 import { SPECS } from './physics.js';
 
 export const FUEL_PRICE = 105; // rupees per litre
-const SCALE_KM = 0.025;        // 1 game metre = 25 real metres = 0.025 real km
-const AVG_SPEED = { car: 22, bus: 16, lorry: 14 };
+const SCALE_KM = 0.001;        // 1 game metre = 1 real metre
+const AVG_SPEED = { car: 13, bus: 10, lorry: 8 };
 
 const CARGO = {
   Guntur: ['Guntur red chillies', 'Turmeric sacks'], Vijayawada: ['Mango crates', 'Electronics'], Visakhapatnam: ['Steel coils', 'Fishing nets'],
@@ -20,7 +20,7 @@ function pickDrop(city, rnd) { return city.dropPoints[Math.floor(rnd() * city.dr
 
 export function generateOffers(world, vehType, nearCity, seed = 1, count = 3) {
   const rnd = mulberry32(strHash(vehType + nearCity.name) ^ (seed * 2654435761));
-  const [minD, maxD] = vehType === 'car' ? [1500, 9000] : vehType === 'bus' ? [3000, 14000] : [3500, 22000];
+  const [minD, maxD] = vehType === 'car' ? [1500, 9000] : vehType === 'bus' ? [3000, 16000] : [3500, 26000];
   const cities = world.cities.filter(c => c !== nearCity && !(c.name === 'Tirumala' && vehType === 'bus'));
   const offers = [];
   let tries = 0;
@@ -46,6 +46,7 @@ export function generateOffers(world, vehType, nearCity, seed = 1, count = 3) {
       : vehType === 'bus' ? `${nearCity.name} - ${to.name} service` : `Taxi fare to ${to.name}`;
     offers.push({ id: `${vehType}-${nearCity.id}-${seed}-${offers.length}`, vehType, title, stops, dist, km: Math.round(km), pay: base, bonus: Math.round(base * 0.2), limit, ghat });
   }
+  if (!offers.length) { const others = world.cities.filter(c => c !== nearCity); for (let i = 0; i < Math.min(count, others.length); i++) { const to = others[Math.floor(rnd() * others.length)], from = pickDrop(nearCity, rnd), drop = pickDrop(to, rnd); const dist = Math.hypot(drop.x - from.x, drop.z - from.z) * 1.15, km = dist * SCALE_KM; offers.push({ id: `${vehType}-${nearCity.id}-${seed}-f${i}`, vehType, title: vehType === 'lorry' ? 'Local delivery' : vehType === 'bus' ? `${nearCity.name} - ${to.name} service` : `Taxi fare to ${to.name}`, stops: [{ city: nearCity, ...from, label: 'Pickup' }, { city: to, ...drop, label: 'Drop-off' }], dist, km: Math.max(1, Math.round(km)), pay: Math.round((km * SPECS[vehType].rate + 150) / 10) * 10, bonus: 40, limit: Math.round(dist / AVG_SPEED[vehType] + 60), ghat: false }); } }
   return offers;
 }
 

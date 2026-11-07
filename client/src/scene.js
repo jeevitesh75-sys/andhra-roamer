@@ -1,5 +1,5 @@
 // three.js world renderer. THREE is injected so the module has no import-map dependency.
-import { CHUNK, terrainChunk, roadPieces, cityStreets, cityBuildings, roundTreeGeometry, palmGeometry, treesForChunk } from './meshbuild.js';
+import { CHUNK, terrainChunk, osmBuildings, osmRoads, roundTreeGeometry, palmGeometry, treesForChunk } from './meshbuild.js';
 import { createModels } from './models.js';
 import { smooth, lerp, clamp, mulberry32 } from './noise.js';
 
@@ -44,7 +44,7 @@ export class Scene3D {
     this.cHorizon = new T.Color(); this.cZenith = new T.Color(); this.cSun = new T.Color(); this.tmpC = new T.Color();
     this.models3d = createModels(T);
     this._textures(); this._materials(); this._sky(); this._lights(); this._water(); this._envMap();
-    this._roads(); this._landmarks(); this._labels(); this._npcInit(); this._beacon();
+    this._landmarks(); this._labels(); this._stations(); this._npcInit(); this._beacon();
     this.resize();
   }
 
@@ -95,6 +95,7 @@ export class Scene3D {
     const roadOpts = { roughness: 0.9, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
     this.mHighway = e(new T.MeshStandardMaterial({ map: this.texHighway, ...roadOpts }), 0.3);
     this.mStreet = e(new T.MeshStandardMaterial({ map: this.texStreet, ...roadOpts }), 0.3);
+    for (const mm of [this.mHighway, this.mStreet]) { mm.polygonOffset = true; mm.polygonOffsetFactor = -2; mm.polygonOffsetUnits = -2; }
     this.mBuilding = e(new T.MeshStandardMaterial({ vertexColors: true, map: this.texFacade, emissive: 0xffffff, emissiveMap: this.texLit, emissiveIntensity: 0, roughness: 0.85, metalness: 0 }), 0.4);
     this.mTree = e(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: T.DoubleSide }), 0.25);
     this.mConcrete = e(new T.MeshStandardMaterial({ color: 0x9a9a94, roughness: 0.95 }), 0.3);
@@ -160,7 +161,7 @@ export class Scene3D {
   /* ------------------------------- labels/landmarks ------------------------------- */
   _labels() {
     const T = this.T; this.labels = [];
-    for (const c of this.world.cities) {
+    for (const c of this.world.cities.filter(c => c.tier >= 1)) {
       const tex = this._canvasTex(512, 128, (x, w, h) => {
         x.fillStyle = 'rgba(15,28,40,0.78)'; x.beginPath(); x.roundRect ? x.roundRect(4, 4, w - 8, h - 8, 22) : x.rect(4, 4, w - 8, h - 8); x.fill();
         x.textAlign = 'center'; x.fillStyle = '#fff'; x.font = 'bold 50px system-ui, sans-serif'; x.fillText(c.name, w / 2, 62);
@@ -199,6 +200,15 @@ export class Scene3D {
       }
       g.add(grp);
     }
+  }
+  /** petrol stations from OSM fuel nodes: instanced canopies, pumps and a tall price sign */
+  _stations() {
+    const T = this.T, L = this.world.stations || []; this.stationGroup = new T.Group(); this.scene.add(this.stationGroup); if (!L.length) return;
+    const mk = (geo, color, y, rough = 0.6) => { const im = new T.InstancedMesh(geo, this._reg(new T.MeshStandardMaterial({ color, roughness: rough }), 0.4), L.length), d = new T.Object3D(); L.forEach((s, i) => { d.position.set(s.x, y, s.z); d.rotation.set(0, 0, 0); d.updateMatrix(); im.setMatrixAt(i, d.matrix); }); im.instanceMatrix.needsUpdate = true; im.frustumCulled = false; im.castShadow = true; this.stationGroup.add(im); return im; };
+    mk(new T.BoxGeometry(14, 0.6, 9), 0xeeeeea, 5.2); mk(new T.BoxGeometry(14.2, 0.45, 9.2), 0xd63031, 4.8);
+    mk(new T.BoxGeometry(0.9, 1.7, 0.7), 0xd63031, 0.85); mk(new T.CylinderGeometry(0.22, 0.22, 5, 8), 0xbbbbbb, 2.5);
+    const pole = mk(new T.CylinderGeometry(0.25, 0.25, 11, 8), 0x999999, 5.5), d = new T.Object3D(); L.forEach((s, i) => { d.position.set(s.x + 9, 5.5, s.z + 6); d.updateMatrix(); pole.setMatrixAt(i, d.matrix); }); pole.instanceMatrix.needsUpdate = true;
+    { const sg = mk(new T.BoxGeometry(3.2, 1.8, 0.4), 0xd63031, 10.5), dd = new T.Object3D(); L.forEach((s, i) => { dd.position.set(s.x + 9, 10.5, s.z + 6); dd.updateMatrix(); sg.setMatrixAt(i, dd.matrix); }); sg.instanceMatrix.needsUpdate = true; }
   }
   _beacon() {
     const T = this.T;
@@ -249,6 +259,14 @@ export class Scene3D {
   _buildChunk(cx, cz) {
     const T = this.T, w = this.world, grp = new T.Group();
     const m = new T.Mesh(this._geo(terrainChunk(w, cx, cz)), this.mTerrain); m.receiveShadow = true; grp.add(m);
+    if (w.buildingsInRect) { // real OSM tile: buildings + roads (geometry is local to the tile corner)
+      const x0 = cx * CHUNK, z0 = cz * CHUNK, x1 = x0 + CHUNK, z1 = z0 + CHUNK;
+      const bg = osmBuildings(w.buildingsInRect(x0, z0, x1, z1), x0, z0);
+      if (bg) { const bm = new T.Mesh(this._geo(bg), this.mBuilding); bm.position.set(x0, 0, z0); bm.castShadow = true; bm.receiveShadow = true; grp.add(bm); }
+      const rg = osmRoads(w.roadsInRect(x0, z0, x1, z1), x0, z0);
+      if (rg.lo) { const rm = new T.Mesh(this._geo(rg.lo), this.mStreet); rm.position.set(x0, 0, z0); rm.receiveShadow = true; grp.add(rm); }
+      if (rg.hi) { const rm = new T.Mesh(this._geo(rg.hi), this.mHighway); rm.position.set(x0, 0, z0); rm.receiveShadow = true; grp.add(rm); }
+    }
     const trees = treesForChunk(w, cx, cz), round = trees.filter(t => !t.palm), palms = trees.filter(t => t.palm);
     const dummy = new T.Object3D(), col = new T.Color();
     const inst = (list, geo) => {
@@ -281,10 +299,6 @@ export class Scene3D {
       const [x, z] = key.split(',').map(Number);
       if ((x - ccx) ** 2 + (z - ccz) ** 2 > (R + 1.6) ** 2) this._dropChunk(key);
     }
-    for (const c of this.world.cities) {
-      const d = Math.hypot(px - c.x, pz - c.z), near = d < c.R + CHUNK * (R - 0.6);
-      if (near) { const o = this._ensureCity(c); o.grp.visible = true; } else { const o = this.cityObjs.get(c.id); if (o) o.grp.visible = d < c.R + CHUNK * (R + 1); }
-    }
     return want.length;
   }
 
@@ -308,7 +322,7 @@ export class Scene3D {
   }
   _npcInit() {
     const rnd = mulberry32(2024), w = this.world; this.npcs = [];
-    const roads = w.roads.filter(r => r.kind !== 'ghat');
+    const roads = w.trafficRoads || w.roads.filter(r => r.kind !== 'ghat');
     const colors = ['#e74c3c', '#f1c40f', '#ecf0f1', '#3498db', '#2ecc71', '#e67e22', '#9b59b6', '#bdc3c7', '#1abc9c', '#c0392b'];
     for (let i = 0; i < 90; i++) {
       const road = roads[Math.floor(rnd() * roads.length)], r = rnd();
@@ -376,7 +390,7 @@ export class Scene3D {
     this.texWater.offset.set(focus.x / 60 + this.time * 0.01, -focus.z / 60 + this.time * 0.006);
     this.updateNPCs(serverSec, focus, info.night);
     const pulse = 0.2 + 0.1 * Math.sin(this.time * 3); if (this.beacon.visible) this.beaconMat.opacity = pulse + 0.08;
-    for (const l of this.labels) { const d = Math.hypot(l.s.position.x - this.camera.position.x, l.s.position.z - this.camera.position.z); l.s.visible = d < 6500 && d > 60; }
+    for (const l of this.labels) { const d = Math.hypot(l.s.position.x - this.camera.position.x, l.s.position.z - this.camera.position.z), k = clamp(d * 0.035, 8, 120); l.s.visible = d < 9000 && d > 350; l.s.scale.set(k * 4, k, 1); }
     if (this.lamp) this.lamp.material.color.setRGB(1, 0.95, info.night ? 0.7 : 0.4);
     return info;
   }

@@ -8,8 +8,14 @@
 3. In Render set `ALLOWED_ORIGINS` to your Vercel URL.
 Test locally: `cd server && node server.js`, serve `client/` (e.g. `npx serve client`), open `?server=ws://localhost:8080`.
 
+## Real map (OpenStreetMap)
+Three real regions ship in `client/data/`: **Vijayawada-Guntur**, **Visakhapatnam**, **Tirupati** (real roads, ~360k real buildings, water, land use, petrol stations, 1 game metre = 1 real metre). Pick the region in the menu; players in the same region + room code drive together.
+To add/replace a region: download a BBBike GeoJSON extract and run `python3 tools/osm2game.py <id> "<Name>" <west> <south> <east> <north> <file.geojson> client/data`, then add it to `REGIONS` in `client/src/main.js`.
+OSM has no elevation, so the ground is flat. Vizag's sea is not in the extract (empty land east of the coast).
+URL options: `?time=day` / `?time=night`, `?region=vizag`, `?room=abc`.
+
 ## Controls
-WASD/arrows drive · Space handbrake · H horn · L lights · C camera · J job board · F refuel at stations · M map · V garage/vehicle · Enter chat · Esc menu. Touch controls on phones.
+WASD/arrows drive (**S** brakes, then reverses; **REV** button on phones) · Space handbrake · H horn · L lights · C camera · J job board · F refuel at petrol stations (⛽ FUEL button on phones) · M map · V garage/vehicle · Enter chat · Esc menu. Touch controls on phones.
 Friends join the same room code to drive together.
 
 ## Customise

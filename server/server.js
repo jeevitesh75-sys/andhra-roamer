@@ -30,7 +30,7 @@ const MAX_FRAME = 4096;
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
 const VEHICLES = ['car', 'bus', 'lorry'];
-const WORLD_MIN = -4000, WORLD_MAX = 60000;
+const WORLD_MIN = -2000, WORLD_MAX = 130000;
 const MAX_SPEED_UNITS = 260; // u/s; anything faster than this between updates is rejected as a teleport
 
 /* ------------------------------------------------------------------ WebSocket */
@@ -140,7 +140,7 @@ const num = (v, lo, hi, d = 0) => (typeof v === 'number' && Number.isFinite(v) ?
 const cleanText = (s, max) =>
   String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
 const cleanColor = c => (/^#[0-9a-fA-F]{6}$/.test(c) ? c.toLowerCase() : '#d9482b');
-const cleanRoom = r => cleanText(r, 12).replace(/[^A-Za-z0-9_-]/g, '').toLowerCase();
+const cleanRoom = r => cleanText(r, 24).replace(/[^A-Za-z0-9_-]/g, '').toLowerCase();
 
 function broadcast(room, obj, exceptId) {
   const s = JSON.stringify(obj);

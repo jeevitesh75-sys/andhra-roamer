@@ -1,5 +1,6 @@
 // Andhra Roamer - game bootstrap, loop, input, camera, HUD, jobs, chat.
-import { createWorld, SURF } from './geo.js';
+import { SURF } from './geo.js';
+import { loadRegionData, createOsmWorld } from './osmworld.js';
 import { Vehicle, SPECS, FIXED_DT, MAX_STEPS } from './physics.js';
 import { Scene3D } from './scene.js';
 import { Net, FLAG } from './net.js';
@@ -10,7 +11,10 @@ import { AudioFX } from './audio.js';
 const $ = id => document.getElementById(id);
 const COLORS = ['#d9482b', '#f1c40f', '#2e86de', '#27ae60', '#ecf0f1', '#8e44ad', '#e67e22', '#2c3e50'];
 const SAVE_KEY = 'andhraRoamer.v1';
-const CYCLE_SEC = 1440; // one in-game day = 24 real minutes
+const CYCLE_SEC = 2400; // one in-game day = 40 real minutes: 32 min of daylight, 8 min of night
+const REGIONS = [{ id: 'vijayawada', name: 'Vijayawada - Guntur' }, { id: 'vizag', name: 'Visakhapatnam' }, { id: 'tirupati', name: 'Tirupati' }];
+const TIME_MODE = new URLSearchParams(location.search).get('time');
+function todOf(sec) { if (TIME_MODE === 'day') return 0.5; if (TIME_MODE === 'night') return 0.95; const t = (sec / CYCLE_SEC) % 1; return t < 0.8 ? 0.27 + (t / 0.8) * 0.46 : (0.73 + ((t - 0.8) / 0.2) * 0.54) % 1; }
 const CAM = { car: { dist: 8.2, h: 3.0, look: 5, lookH: 1.2, eye: [-0.4, 1.28, 0.25] }, bus: { dist: 15, h: 5.6, look: 9, lookH: 2.4, eye: [-0.8, 2.55, 4.3] },
   lorry: { dist: 13.5, h: 5.0, look: 8, lookH: 2.3, eye: [-0.6, 2.85, 3.5] } };
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -36,7 +40,7 @@ async function boot() {
     progress('Loading engine...', 0.1);
     const [T] = await Promise.all([loadThree(), nextFrame()]);
     G.T = T; progress('Building Andhra Pradesh...', 0.35); await nextFrame();
-    G.world = createWorld(); G.map = new MapView(G.world);
+    G.meta = {};
     G.audio = new AudioFX(); G.save = loadSave();
     buildMenu(); $('loading').hidden = true; $('menu').hidden = false;
   } catch (e) { $('ldErr').textContent = String(e.message || e); console.error(e); }
@@ -44,11 +48,10 @@ async function boot() {
 
 /* ------------------------------------------------------------ menu */
 function buildMenu() {
-  const s = G.save, prof = G.profile = { name: s.name || '', veh: s.veh || 'car', color: s.color || COLORS[0], city: s.city || 'Vijayawada', room: s.room || new URLSearchParams(location.search).get('room') || '' };
+  const s = G.save, prof = G.profile = { name: s.name || '', veh: s.veh || 'car', color: s.color || COLORS[0], region: new URLSearchParams(location.search).get('region') || s.region || 'vijayawada', city: s.city || '', room: s.room || new URLSearchParams(location.search).get('room') || '' };
   $('name').value = prof.name; $('room').value = prof.room;
-  const sel = $('startCity'); sel.innerHTML = '';
-  for (const c of G.world.cities.filter(c => c.tier >= 1)) { const o = document.createElement('option'); o.value = c.name; o.textContent = c.name; sel.appendChild(o); }
-  sel.value = prof.city;
+  const rg = $('region'); rg.innerHTML = ''; for (const r of REGIONS) { const o = document.createElement('option'); o.value = r.id; o.textContent = r.name; rg.appendChild(o); }
+  rg.value = prof.region; rg.onchange = () => fillCities(rg.value); fillCities(prof.region);
   const swatches = (host, onPick) => { host.innerHTML = ''; COLORS.forEach(c => { const i = document.createElement('i'); i.style.background = c; i.dataset.c = c; if (c === G.profile.color) i.className = 'sel'; i.onclick = () => { onPick(c); [...host.children].forEach(k => k.classList.toggle('sel', k.dataset.c === c)); }; host.appendChild(i); }); };
   swatches($('colors'), c => { G.profile.color = c; });
   const vehBtns = (host, onPick) => { [...host.querySelectorAll('button')].forEach(b => { b.classList.toggle('sel', b.dataset.veh === G.profile.veh); b.onclick = () => { onPick(b.dataset.veh); [...host.querySelectorAll('button')].forEach(k => k.classList.toggle('sel', k === b)); }; }); };
@@ -58,10 +61,26 @@ function buildMenu() {
   G.swatches = swatches; G.vehBtns = vehBtns;
 }
 
+async function fillCities(id) {
+  const sel = $('startCity'); sel.innerHTML = '<option>Loading...</option>';
+  try {
+    const meta = G.meta[id] || (G.meta[id] = await (await fetch(`data/${id}.json`)).json());
+    sel.innerHTML = ''; for (const c of meta.hubs.filter(c => c.tier >= 1).slice(0, 30)) { const o = document.createElement('option'); o.value = c.name; o.textContent = c.name; sel.appendChild(o); }
+    if ([...sel.options].some(o => o.value === G.profile.city)) sel.value = G.profile.city;
+  } catch (e) { sel.innerHTML = '<option value="">(map data missing)</option>'; }
+}
+
 async function startGame() {
   const prof = G.profile; prof.name = ($('name').value || '').trim() || 'Driver' + Math.floor(Math.random() * 900 + 100);
-  prof.city = $('startCity').value; prof.room = ($('room').value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 12);
-  G.audio.start(); $('menu').hidden = true; $('loading').hidden = false; progress('Rendering the world...', 0.5);
+  prof.region = $('region').value; prof.city = $('startCity').value;
+  if (G.world && G.world.meta.id !== prof.region) { store({ ...G.save, region: prof.region, city: prof.city, name: prof.name, veh: prof.veh, color: prof.color }); location.reload(); return; }
+  prof.room = ($('room').value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 12);
+  G.audio.start(); $('menu').hidden = true; $('loading').hidden = false; progress('Loading the map...', 0.05);
+  if (!G.world) {
+    try { const d = await loadRegionData(prof.region, 'data', f => progress('Loading the map...', 0.05 + f * 0.3)); progress('Building the city...', 0.4); await nextFrame(); G.world = createOsmWorld(d); G.map = new MapView(G.world); }
+    catch (e) { $('ldErr').textContent = 'Map data failed to load: ' + e.message; console.error(e); return; }
+  }
+  progress('Rendering the world...', 0.5);
   const first = !G.scene;
   if (first) {
     const q = G.save.quality || (matchMedia('(max-width: 800px)').matches ? 'low' : 'medium');
@@ -70,15 +89,15 @@ async function startGame() {
     G.money = G.save.money || 0; G.earned = G.save.earned || 0;
     initInput(); initHud();
   } else { G.veh.setType(prof.veh); G.scene.removeModel('me'); }
-  const c = G.world.cityByName.get(prof.city) || G.world.cities[0];
-  const dp = c.dropPoints[0] || { x: c.x, z: c.z };
-  G.veh.setType(prof.veh); G.veh.reset(dp.x, dp.z, Math.atan2(Math.cos(c.angle), Math.sin(c.angle)));
+  const c = G.world.cityByName.get(prof.city) || G.world.cities.find(h => h.tier === 2) || G.world.cities[0];
+  const sp = c.spawn || c.dropPoints[0] || { x: c.x, z: c.z, h: 0 }, dp = sp;
+  G.veh.setType(prof.veh); G.veh.reset(sp.x, sp.z, sp.h);
   G.camYaw = G.veh.h; G.orbit = 0; G.runner = null; G.scene.setBeacon(null);
   // initial terrain ring, a few chunks per frame so the progress bar moves
   let left = 1; while (left > 0) { left = G.scene.updateChunks(dp.x, dp.z, 4); progress('Rendering the world...', 0.5 + 0.5 * (1 - Math.min(1, left / 60))); await nextFrame(); }
   G.scene.model('me', prof.veh, prof.color);
   $('loading').hidden = true; $('hud').hidden = false;
-  if ('ontouchstart' in window) $('touch').hidden = false;
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) { $('touch').hidden = false; G.touch.enabled = true; $('hud').classList.add('is-touch'); }
   G.swatches($('garColors'), c2 => { G.profile.color = c2; applyVehicleChange(); });
   G.vehBtns($('garVeh'), v => { G.profile.veh = v; applyVehicleChange(); });
   persist();
@@ -87,7 +106,7 @@ async function startGame() {
     onLeaveAll: () => { for (const k of [...G.scene.models.keys()]) if (k.startsWith('r')) G.scene.removeModel(k); clearTags(); }, onError: m => toast(m, 3500) });
   const url = new URLSearchParams(location.search).get('server') || (window.GAME_CONFIG && window.GAME_CONFIG.SERVER_URL) || '';
   G.net.disconnect();
-  if (url) G.net.connect(url, { name: prof.name, veh: prof.veh, color: prof.color, room: prof.room || 'public' });
+  if (url) G.net.connect(url, { name: prof.name, veh: prof.veh, color: prof.color, room: prof.region + '-' + (prof.room || 'open') });
   else onNetStatus('offline', 'Offline mode (no server URL set)');
   G.running = true; G.paused = false; G.lastT = performance.now(); G.acc = 0;
   if (!G.started) { G.started = true; requestAnimationFrame(frame); }
@@ -98,7 +117,7 @@ function applyVehicleChange() {
   const p = G.profile; if (p.veh !== G.veh.type) { G.veh.setType(p.veh); G.runner = null; G.scene.setBeacon(null); toast('Switched to ' + SPECS[p.veh].label + ' (refuelled)'); }
   G.scene.model('me', p.veh, p.color); G.net && G.net.sendVehicle(p.veh, p.color); persist();
 }
-function persist() { const p = G.profile; store({ ...G.save, name: p.name, veh: p.veh, color: p.color, city: p.city, room: p.room, money: G.money, earned: G.earned, quality: G.scene ? G.scene.qName : G.save.quality }); }
+function persist() { const p = G.profile; store({ ...G.save, name: p.name, veh: p.veh, color: p.color, region: p.region, city: p.city, room: p.room, money: G.money, earned: G.earned, quality: G.scene ? G.scene.qName : G.save.quality }); }
 
 /* ------------------------------------------------------------ input */
 function typing() { const a = document.activeElement; return a && (a.tagName === 'INPUT' || a.tagName === 'SELECT'); }
@@ -138,7 +157,7 @@ function initInput() {
 }
 function readInput(dt) {
   const K = G.keys, T = G.touch;
-  const up = K.KeyW || K.ArrowUp || T.gas, down = K.KeyS || K.ArrowDown, left = K.KeyA || K.ArrowLeft || T.left, right = K.KeyD || K.ArrowRight || T.right;
+  const up = K.KeyW || K.ArrowUp || T.gas, down = K.KeyS || K.ArrowDown || T.rev, left = K.KeyA || K.ArrowLeft || T.left, right = K.KeyD || K.ArrowRight || T.right;
   const target = (right ? 1 : 0) - (left ? 1 : 0);
   G.steer += (target - G.steer) * Math.min(1, dt * (target === 0 ? 9 : 5.5));
   if (G.paused || modalOpen()) return { throttle: 0, steer: 0, brake: 0.6, handbrake: false };
@@ -213,7 +232,7 @@ function updateJob(dt) {
   }
 }
 function stationNear() {
-  const v = G.veh; for (const c of G.world.cities) { if (Math.abs(v.x - c.fuel.x) < 40 && Math.abs(v.z - c.fuel.z) < 40 && Math.hypot(v.x - c.fuel.x, v.z - c.fuel.z) < 28) return c; } return null;
+  const v = G.veh; for (const s of G.world.stations || []) { if (Math.abs(v.x - s.x) < 30 && Math.abs(v.z - s.z) < 30 && Math.hypot(v.x - s.x, v.z - s.z) < 24) return s; } return null;
 }
 function resetToRoad(free) {
   const v = G.veh; v.respawnOnRoad();
@@ -242,7 +261,7 @@ function stepSim(dt) {
   updateJob(dt);
   // refuelling
   const st = stationNear(); G.atStation = st;
-  if (st && v.speed < 3 && G.keys.KeyF && v.fuel < v.spec.tank && !modalOpen() && !typing()) {
+  if (st && v.speed < 3 && (G.keys.KeyF || G.touch.fuel) && v.fuel < v.spec.tank && !modalOpen() && !typing()) {
     let l = Math.min(v.spec.tank - v.fuel, 14 * dt); const cost = l * FUEL_PRICE;
     if (cost > G.money) l = Math.max(0, G.money / FUEL_PRICE);
     if (l > 0) { v.fuel += l; G.money -= l * FUEL_PRICE; } else toast('Not enough money for fuel');
@@ -312,19 +331,19 @@ function updateHud(dt, info, serverSec) {
   const f = clamp(v.fuel / v.spec.tank, 0, 1); $('fuelBar').style.width = '100%'; $('fuelBar').style.clipPath = `inset(0 ${100 - f * 100}% 0 0)`;
   $('fuelTxt').textContent = `FUEL ${Math.round(v.fuel)} / ${v.spec.tank} L`; $('fuelTxt').parentElement.classList.toggle('low', f < 0.15);
   $('money').textContent = rs(G.money); $('rank').textContent = rankFor(G.earned);
-  const tod = ((serverSec / CYCLE_SEC + 0.3) % 1) * 24, hh = Math.floor(tod), mm = Math.floor((tod - hh) * 60);
+  const tod = todOf(serverSec) * 24, hh = Math.floor(tod), mm = Math.floor((tod - hh) * 60);
   $('clock').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}  ·  ${v.surf === SURF.ROAD || v.surf === SURF.STREET ? 'road' : v.surf === SURF.WATER ? 'water!' : 'off-road'}`;
   const { city, dist } = nearestCityInfo(), nr = G.world.nearestRoad(v.x, v.z), onRoad = nr && nr.d < nr.halfW + 3 ? nr.road.ref : '';
-  $('where').textContent = dist < city.R ? `${city.name} · ${city.te}` : `${(dist * 0.025).toFixed(0)} km from ${city.name}${onRoad ? ' · ' + onRoad : ''}`;
+  $('where').textContent = dist < city.R ? `${city.name}${city.te ? ' · ' + city.te : ''}` : `${(dist * 0.001).toFixed(1)} km from ${city.name}${onRoad ? ' · ' + onRoad : ''}`;
   const r = G.runner; $('jobPanel').hidden = !r; $('arrowBox').hidden = !r;
   if (r) {
     const t = r.target, d = Math.hypot(t.x - v.x, t.z - v.z), ang = Math.atan2(t.x - v.x, t.z - v.z) - v.h;
     $('jobTitle').textContent = r.job.title; $('jobStep').textContent = `${t.label} → ${t.city.name} (${r.index + 1}/${r.job.stops.length})`;
-    $('jobDist').textContent = d > 1000 ? `${(d * 0.025).toFixed(0)} km` : `${Math.round(d)} m`; const tl = Math.max(0, Math.ceil(r.timeLeft));
+    $('jobDist').textContent = d > 1000 ? `${(d * 0.001).toFixed(1)} km` : `${Math.round(d)} m`; const tl = Math.max(0, Math.ceil(r.timeLeft));
     $('jobTime').textContent = `${Math.floor(tl / 60)}:${String(tl % 60).padStart(2, '0')}${r.timeLeft < 0 ? ' late' : ''}`; $('arrow').style.transform = `rotate(${-ang * 57.2958}deg)`;
   }
-  const pr = $('prompt'), st = G.atStation;
-  if (st && v.speed < 3) { pr.hidden = false; pr.textContent = v.fuel >= v.spec.tank - 0.2 ? 'Tank full' : `Hold F to refuel  (${rs(FUEL_PRICE)}/L)`; }
+  const pr = $('prompt'), st = G.atStation; if (G.touch.enabled) $('fuelBtn').style.display = st && v.speed < 3 ? 'block' : 'none';
+  if (st && v.speed < 3) { pr.hidden = false; pr.textContent = v.fuel >= v.spec.tank - 0.2 ? 'Tank full' : (G.touch.enabled ? `Hold FUEL to refuel  (${rs(FUEL_PRICE)}/L)` : `Hold F to refuel  (${rs(FUEL_PRICE)}/L)`); }
   else if (v.fuel <= 0.2) { pr.hidden = false; pr.textContent = 'Out of fuel! Press R to reset to road'; }
   else pr.hidden = true;
   if (!$('players').hidden) renderPlayers();
@@ -338,7 +357,7 @@ function frame(now) {
   G.fpsAcc += dt; G.fpsN++; if (G.fpsAcc > 3) { G.fps = G.fpsN / G.fpsAcc; G.fpsAcc = 0; G.fpsN = 0; autoQuality(); }
   if (!G.paused) { G.acc += dt; let n = 0; while (G.acc >= FIXED_DT && n < MAX_STEPS) { stepSim(FIXED_DT); G.acc -= FIXED_DT; n++; } if (n === MAX_STEPS) G.acc = 0; }
   const v = G.veh, pose = poseOf(clamp(G.acc / FIXED_DT, 0, 1), G.tmp.pose || (G.tmp.pose = {}));
-  const serverSec = (G.net ? G.net.now() : Date.now()) / 1000, tod = (serverSec / CYCLE_SEC + 0.3) % 1;
+  const serverSec = (G.net ? G.net.now() : Date.now()) / 1000, tod = todOf(serverSec);
   const info = G.scene.update(dt, { x: pose.x, y: pose.y, z: pose.z }, tod, serverSec);
   G.scene.updateChunks(pose.x, pose.z, 1);
   const lightsOn = G.lights === 'on' || (G.lights === 'auto' && info.night);
@@ -350,7 +369,7 @@ function frame(now) {
   if (G.net) G.net.sendState(v, flags);
   G.audio.update(v.rpm, G.paused ? 0 : Math.max(0, G.keys.KeyW || G.keys.ArrowUp || G.touch.gas ? 1 : 0), v.skid * (v.speed > 3 ? 1 : 0), v.type);
   if ((G.hudT += dt) > 0.066) { G.hudT = 0; updateHud(dt, info, serverSec); }
-  if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, cx: v.x, cz: v.z, radius: 1500, me: v, target: G.runner && G.runner.target, players: remotePins() }); if (!$('bigmap').hidden) drawBigMap(); }
+  if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, cx: v.x, cz: v.z, radius: 650, me: v, target: G.runner && G.runner.target, players: remotePins() }); if (!$('bigmap').hidden) drawBigMap(); }
   if ((G.saveT += dt) > 6) { G.saveT = 0; persist(); } if ((G.moneyT += dt) > 5) { G.moneyT = 0; if (G.net) G.net.sendMoney(G.earned); }
 }
 function autoQuality() {

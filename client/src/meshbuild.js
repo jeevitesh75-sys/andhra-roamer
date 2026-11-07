@@ -108,7 +108,7 @@ export function cityStreets(world, c) {
   return mergeGeos(pieces, ['pos', 'nor', 'uv']);
 }
 
-function pushBox(out, cx, cz, hw, hd, c, s, y0, y1, color, plainUV, vTop, uScale) {
+export function pushBox(out, cx, cz, hw, hd, c, s, y0, y1, color, plainUV, vTop, uScale) {
   // 4 side faces + roof. Window texture tile = 6 m wide x 6.4 m tall.
   const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([lx, lz]) => [cx + lx * c - lz * s, cz + lx * s + lz * c]);
   const base = out.pos.length / 3;
@@ -220,3 +220,39 @@ export function treesForChunk(world, cx, cz, size = CHUNK) {
 
 /* ---------------------------- procedural road texture ---------------------------- */
 export const FACADE_TILE = { w: 6, h: 6.4 };
+
+/* ------------------------------ OSM tiles (real map) ------------------------------ */
+const BPAL = [
+  [[0.93, 0.89, 0.78], [0.86, 0.72, 0.55], [0.78, 0.82, 0.86], [0.9, 0.78, 0.78], [0.75, 0.85, 0.7], [0.95, 0.93, 0.88], [0.84, 0.62, 0.46], [0.9, 0.84, 0.6]],
+  [[0.88, 0.86, 0.82], [0.8, 0.78, 0.72], [0.92, 0.85, 0.7], [0.7, 0.78, 0.85], [0.85, 0.7, 0.65], [0.9, 0.9, 0.86]],
+  [[0.75, 0.8, 0.85], [0.9, 0.9, 0.88], [0.7, 0.72, 0.75], [0.85, 0.75, 0.55], [0.8, 0.85, 0.8]],
+  [[0.62, 0.64, 0.66], [0.7, 0.68, 0.62], [0.55, 0.6, 0.68], [0.75, 0.74, 0.72]],
+  [[0.97, 0.93, 0.85], [0.9, 0.55, 0.3], [0.95, 0.8, 0.5], [0.98, 0.98, 0.95]],
+  [[0.9, 0.88, 0.8], [0.85, 0.78, 0.6], [0.8, 0.85, 0.9], [0.92, 0.7, 0.55]],
+];
+/** list = world.buildingsInRect(...) objects; geometry is built relative to (ox,oz) so far-from-origin precision is not an issue */
+export function osmBuildings(list, ox, oz) {
+  const out = { pos: [], nor: [], uv: [], col: [], idx: [] };
+  for (const b of list) {
+    const pal = BPAL[b.cls] || BPAL[0], hs = hash2(Math.round(b.x), Math.round(b.z), 11), c0 = pal[Math.floor(hs * pal.length) % pal.length], tint = 0.93 + hash2(Math.round(b.x), Math.round(b.z), 3) * 0.14;
+    const col = [lin(c0[0] * tint), lin(c0[1] * tint), lin(c0[2] * tint)];
+    const y0 = -2, y1 = b.h;
+    pushBox(out, b.x - ox, b.z - oz, b.hw, b.hd, b.c, b.s, y0, y1, col, false, (y1 - y0) / 6.4, 1);
+    if (b.h > 4 && b.hw * b.hd > 30 && hs > 0.45) pushBox(out, b.x - ox + b.c * b.hw * 0.4, b.z - oz + b.s * b.hw * 0.4, 0.7, 0.7, b.c, b.s, y1, y1 + 1.5, [lin(0.28), lin(0.28), lin(0.3)], true, 1, 1); // water tank on the roof
+  }
+  if (!out.pos.length) return null;
+  return { pos: new Float32Array(out.pos), nor: new Float32Array(out.nor), uv: new Float32Array(out.uv), col: new Float32Array(out.col), idx: new Uint32Array(out.idx) };
+}
+/** road runs from world.roadsInRect -> {hi, lo} merged geometries (highways with lane dashes, streets plain) */
+export function osmRoads(runs, ox, oz) {
+  const hi = [], lo = [];
+  for (const u of runs) {
+    const r = u.road, m = u.b - u.a + 1; if (m < 2) continue;
+    const xs = new Float64Array(m), zs = new Float64Array(m), ys = new Float64Array(m);
+    for (let i = 0; i < m; i++) { xs[i] = r.pts[2 * (u.a + i)] - ox; zs[i] = r.pts[2 * (u.a + i) + 1] - oz; }
+    const g = ribbon(xs, zs, ys, r.halfW, 12, 0.05 + (8 - r.cls) * 0.012);
+    const off = r.cum[u.a] / 12; for (let i = 0; i < m * 2; i++) g.uv[2 * i + 1] += off;
+    (r.cls <= 4 ? hi : lo).push(g);
+  }
+  return { hi: hi.length ? mergeGeos(hi, ['pos', 'nor', 'uv']) : null, lo: lo.length ? mergeGeos(lo, ['pos', 'nor', 'uv']) : null };
+}

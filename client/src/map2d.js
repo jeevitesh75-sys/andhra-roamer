@@ -1,60 +1,69 @@
-// 2D map drawing (minimap + full map). Plain canvas, no three.js.
-import { project } from './geo.js';
+// 2D map drawing (minimap + full map) for the real OSM world. Plain canvas, no three.js.
+const LAND = ['#e6e8cc', '#8cc0e0', '#ebe4d8', '#e0e7ba', '#bfdaa6', '#d0e7ba', '#dcd9d9', '#f1e7c3', '#e2d4b8'];
+const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const ROAD_COL = ['#e8903d', '#e8903d', '#f2b84b', '#f6d27a', '#ffffff', '#ffffff', '#ffffff', '#f4f4f4', '#d8c9a8'];
+const ROAD_W = [10, 9, 8, 7, 6, 5, 4.5, 3, 3];   // approx metres wide on the map
 
 export class MapView {
-  constructor(world) { this.w = world; this.cache = null; this.cacheKey = ''; }
-  /** draw into ctx. mode 'mini': centred on (cx,cz) with radius rad; 'full': whole state fitted in canvas */
+  constructor(world) { this.w = world; this.land = null; this.f = 4; this.fullRoads = null; }
+  _landCanvas() {
+    if (this.land) return this.land;
+    const w = this.w, f = this.f, cw = Math.ceil(w.landW / f), ch = Math.ceil(w.landH / f);
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch; const x = c.getContext('2d'), im = x.createImageData(cw, ch), pal = LAND.map(hex);
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) { const k = w.landClass(Math.min(w.landW - 1, i * f + (f >> 1)), Math.min(w.landH - 1, j * f + (f >> 1))), p = pal[k] || pal[0], o = (j * cw + i) * 4; im.data[o] = p[0]; im.data[o + 1] = p[1]; im.data[o + 2] = p[2]; im.data[o + 3] = 255; }
+    x.putImageData(im, 0, 0); return (this.land = c);
+  }
+  _drawRuns(ctx, runs, X, Z, sc, pass, full) {
+    for (const u of runs) {
+      const r = u.road, cls = r.cls;
+      ctx.lineWidth = Math.max(full ? 1 : 1.4, ROAD_W[cls] * sc * (pass === 0 ? 1.5 : 1));
+      ctx.strokeStyle = pass === 0 ? '#9aa0a6' : ROAD_COL[cls];
+      ctx.beginPath();
+      for (let i = u.a; i <= u.b; i++) { const x = X(r.pts[2 * i]), z = Z(r.pts[2 * i + 1]); i === u.a ? ctx.moveTo(x, z) : ctx.lineTo(x, z); }
+      ctx.stroke();
+    }
+  }
+  /** mode 'mini': centred on (cx,cz) with radius; 'full': whole region fitted in canvas */
   draw(ctx, W, H, opts) {
-    const w = this.w, full = opts.full;
+    const w = this.w, full = opts.full, WD = w.WORLD, cell = w.meta.cell;
     const view = full
-      ? (() => { const sc = Math.min(W / w.WORLD.w, H / w.WORLD.h) * 0.96; return { sc, ox: W / 2 - (w.WORLD.w * sc) / 2 + 0, oz: H / 2 - (w.WORLD.h * sc) / 2 }; })()
+      ? (() => { const sc = Math.min(W / WD.w, H / WD.h) * 0.97; return { sc, ox: W / 2 - (WD.w * sc) / 2, oz: H / 2 - (WD.h * sc) / 2 }; })()
       : (() => { const sc = Math.min(W, H) / (opts.radius * 2); return { sc, ox: W / 2 - opts.cx * sc, oz: H / 2 - opts.cz * sc }; })();
-    const X = x => x * view.sc + view.ox, Z = z => z * view.sc + view.oz;
+    const X = x => x * view.sc + view.ox, Z = z => z * view.sc + view.oz, sc = view.sc;
     ctx.save(); ctx.clearRect(0, 0, W, H);
     if (!full) { ctx.beginPath(); ctx.arc(W / 2, H / 2, W / 2 - 1, 0, 7); ctx.clip(); }
-    // sea
-    ctx.fillStyle = '#7fb4d6'; ctx.fillRect(0, 0, W, H);
-    // land polygon from the coastline (everything west of it)
-    ctx.beginPath(); const c = w.coast;
-    ctx.moveTo(X(-5000), Z(c[0][1] - 5000));
-    ctx.lineTo(X(c[0][0]), Z(c[0][1] - 5000));
-    for (const p of c) ctx.lineTo(X(p[0]), Z(p[1]));
-    ctx.lineTo(X(c[c.length - 1][0]), Z(w.WORLD.h + 5000)); ctx.lineTo(X(-5000), Z(w.WORLD.h + 5000)); ctx.closePath();
-    ctx.fillStyle = '#d9e3b8'; ctx.fill();
-    // hills as soft shading
-    for (const h of w.hills) {
-      const r = Math.sqrt(h.r2) * view.sc * 1.2; if (r < 2) continue;
-      const g = ctx.createRadialGradient(X(h.x), Z(h.z), 0, X(h.x), Z(h.z), r);
-      g.addColorStop(0, 'rgba(120,104,70,0.55)'); g.addColorStop(1, 'rgba(120,104,70,0)'); ctx.fillStyle = g;
-      ctx.fillRect(X(h.x) - r, Z(h.z) - r, r * 2, r * 2);
-    }
-    // rivers
-    ctx.strokeStyle = '#7fb4d6'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    for (const r of w.rivers) { ctx.lineWidth = Math.max(1.5, r.w * view.sc * 1.2); ctx.beginPath(); r.pts.forEach((p, i) => (i ? ctx.lineTo(X(p[0]), Z(p[1])) : ctx.moveTo(X(p[0]), Z(p[1])))); ctx.stroke(); }
-    // roads
-    for (const pass of [0, 1]) {
-      for (const r of w.roads) {
-        const nh = r.kind === 'nh', ghat = r.kind === 'ghat';
-        ctx.strokeStyle = pass === 0 ? '#ffffff' : ghat ? '#c0392b' : nh ? '#e8a33d' : '#8a8a8a';
-        ctx.lineWidth = (pass === 0 ? 2.2 : 1.2) * (full ? 1 : 1.6) * (nh ? 1.2 : 1);
-        ctx.beginPath();
-        for (let i = 0; i < r.n; i += 4) { const x = X(r.pts[2 * i]), z = Z(r.pts[2 * i + 1]); i ? ctx.lineTo(x, z) : ctx.moveTo(x, z); }
-        ctx.stroke();
+    ctx.fillStyle = '#e6e8cc'; ctx.fillRect(0, 0, W, H);
+    const land = this._landCanvas(); ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(land, X(0), Z(0), land.width * this.f * cell * sc, land.height * this.f * cell * sc);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (full) {
+      if (!this.fullRoads || this.fullRoads.key !== W + 'x' + H) { // cache the road layer: only the bigger roads, drawn once
+        const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d'); x.lineCap = 'round'; x.lineJoin = 'round';
+        const runs = w.roadsInRect(0, 0, WD.w, WD.h, 4);
+        this._drawRuns(x, runs, X, Z, sc, 0, true); this._drawRuns(x, runs, X, Z, sc, 1, true);
+        this.fullRoads = { key: W + 'x' + H, canvas: c };
       }
+      ctx.drawImage(this.fullRoads.canvas, 0, 0);
+    } else {
+      const R = opts.radius * 1.2, maxCls = opts.radius > 1500 ? 4 : 7, runs = w.roadsInRect(opts.cx - R, opts.cz - R, opts.cx + R, opts.cz + R, maxCls);
+      this._drawRuns(ctx, runs, X, Z, sc, 0, false); this._drawRuns(ctx, runs, X, Z, sc, 1, false);
     }
-    // cities
+    // hubs
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const city of w.cities) {
       const x = X(city.x), z = Z(city.z);
       if (x < -40 || z < -20 || x > W + 40 || z > H + 20) continue;
-      const rad = (full ? 3 + city.tier * 1.6 : 3 + city.tier * 1.2);
+      if (!full && city.tier < 1) continue;
+      const rad = full ? 2.5 + city.tier * 1.6 : 3 + city.tier * 1.2;
       ctx.fillStyle = '#2c3e50'; ctx.beginPath(); ctx.arc(x, z, rad, 0, 7); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, z, rad - 1.6, 0, 7); ctx.fill();
-      if (full ? city.tier >= 1 || opts.zoomLabels : city.tier >= 1) {
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, z, rad - 1.5, 0, 7); ctx.fill();
+      if (full ? city.tier >= 1 || opts.zoomLabels : true) {
         ctx.font = `600 ${full ? 11 : 10}px system-ui, sans-serif`; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)';
         ctx.strokeText(city.name, x, z - rad - 7); ctx.fillStyle = '#1b2a38'; ctx.fillText(city.name, x, z - rad - 7);
       }
     }
+    // petrol stations
+    ctx.fillStyle = '#d63031'; for (const s of w.stations) { const x = X(s.x), z = Z(s.z); if (x < 0 || z < 0 || x > W || z > H) continue; ctx.beginPath(); ctx.arc(x, z, full ? 1.8 : 3, 0, 7); ctx.fill(); }
     // job target
     if (opts.target) {
       const x = X(opts.target.x), z = Z(opts.target.z);
@@ -68,7 +77,7 @@ export class MapView {
     }
     // me (arrow)
     if (opts.me) {
-      ctx.save(); ctx.translate(X(opts.me.x), Z(opts.me.z)); ctx.rotate(-opts.me.h); // forward = (sin h, cos h) on a map where z grows downward
+      ctx.save(); ctx.translate(X(opts.me.x), Z(opts.me.z)); ctx.rotate(-opts.me.h);
       ctx.rotate(opts.rotate || 0);
       ctx.fillStyle = '#1e90ff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath();
       ctx.moveTo(0, 9); ctx.lineTo(-6, -7); ctx.lineTo(0, -3); ctx.lineTo(6, -7); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
@@ -76,4 +85,3 @@ export class MapView {
     ctx.restore();
   }
 }
-export { project };

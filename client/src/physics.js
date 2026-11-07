@@ -8,11 +8,11 @@ export const MAX_STEPS = 5;
 
 export const SPECS = {
   car: { label: 'Hatchback', len: 4.2, wid: 1.76, wheelbase: 2.55, track: 1.5, maxSpeed: 44, accel: 5.6, brake: 9.5, reverseMax: 9,
-    maxSteer: 0.62, steerSpeed: 17, tank: 45, fuelPerM: 0.0014, rate: 14, jobLabel: 'Taxi fares' },
+    maxSteer: 0.62, steerSpeed: 17, tank: 45, fuelPerM: 0.00015, rate: 14, jobLabel: 'Taxi fares' },
   bus: { label: 'Bus', len: 11.4, wid: 2.55, wheelbase: 6.1, track: 2.0, maxSpeed: 27, accel: 2.7, brake: 6.2, reverseMax: 6,
-    maxSteer: 0.5, steerSpeed: 13, tank: 200, fuelPerM: 0.0042, rate: 38, jobLabel: 'Passenger routes' },
+    maxSteer: 0.5, steerSpeed: 13, tank: 200, fuelPerM: 0.0005, rate: 38, jobLabel: 'Passenger routes' },
   lorry: { label: 'Lorry', len: 9.2, wid: 2.5, wheelbase: 5.2, track: 1.9, maxSpeed: 24, accel: 2.1, brake: 5.6, reverseMax: 6,
-    maxSteer: 0.52, steerSpeed: 13, tank: 300, fuelPerM: 0.0055, rate: 55, jobLabel: 'Cargo deliveries' },
+    maxSteer: 0.52, steerSpeed: 13, tank: 300, fuelPerM: 0.00065, rate: 55, jobLabel: 'Cargo deliveries' },
 };
 
 const SURFACE = {
