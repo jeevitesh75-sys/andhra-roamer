@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0d1b2a">
+<title>Andhra Roamer - Drive Andhra Pradesh</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="loading"><div class="ld-title">ANDHRA ROAMER</div><div id="ldText">Loading engine...</div><div class="bar"><i id="ldBar"></i></div><div id="ldErr"></div></div>
+
+<div id="menu" class="screen" hidden>
+  <div class="card">
+    <h1>ANDHRA ROAMER</h1>
+    <p class="sub">A multiplayer drive across Andhra Pradesh. Haul cargo, run bus routes, take fares, climb the ghats.</p>
+    <label>Driver name<input id="name" maxlength="16" placeholder="Your name" autocomplete="off"></label>
+    <div class="row3" id="vehPick">
+      <button data-veh="car"><span>🚗</span>Hatchback<small>Taxi fares</small></button>
+      <button data-veh="bus"><span>🚌</span>Bus<small>Passenger routes</small></button>
+      <button data-veh="lorry"><span>🚛</span>Lorry<small>Cargo deliveries</small></button>
+    </div>
+    <div class="swatches" id="colors"></div>
+    <div class="row2">
+      <label>Start in<select id="startCity"></select></label>
+      <label>Room code<input id="room" maxlength="12" placeholder="public" autocomplete="off"></label>
+    </div>
+    <button id="startBtn" class="big">DRIVE</button>
+    <div id="menuStatus" class="note"></div>
+    <div class="keys"><b>W A S D</b> drive &nbsp; <b>Space</b> handbrake &nbsp; <b>H</b> horn &nbsp; <b>L</b> lights &nbsp; <b>C</b> camera &nbsp; <b>J</b> jobs &nbsp; <b>M</b> map &nbsp; <b>F</b> refuel &nbsp; <b>R</b> reset &nbsp; <b>V</b> vehicle &nbsp; <b>Enter</b> chat &nbsp; <b>Tab</b> players</div>
+  </div>
+</div>
+
+<div id="hud" hidden>
+  <div id="status" class="pill"></div>
+  <div id="topInfo"><div id="where"></div><div id="clock"></div></div>
+  <div id="moneyBox"><div id="money">Rs 0</div><div id="rank"></div></div>
+  <canvas id="minimap" width="360" height="360"></canvas>
+  <div id="jobPanel" hidden><div id="jobTitle"></div><div id="jobStep"></div><div class="jobRow"><span id="jobDist"></span><span id="jobTime"></span></div><div class="jobRow"><button id="jobCancel">Cancel job [X]</button></div></div>
+  <div id="arrowBox" hidden><div id="arrow"></div></div>
+  <div id="dash">
+    <div id="speed">0</div><div id="unit">km/h</div>
+    <div id="gear">N</div>
+    <div class="gauge"><i id="fuelBar"></i><span id="fuelTxt">FUEL</span></div>
+  </div>
+  <div id="prompt" hidden></div>
+  <div id="toast" hidden></div>
+  <div id="chatlog"></div>
+  <input id="chatinput" maxlength="120" placeholder="Say something..." hidden autocomplete="off">
+  <div id="players" hidden></div>
+  <div id="flash"></div>
+  <div id="help">H horn · L lights · C camera · J jobs · M map · V vehicle · Esc menu</div>
+  <div id="touch" hidden>
+    <div class="tl"><button data-k="left">◀</button><button data-k="right">▶</button></div>
+    <div class="tr"><button data-k="brake">BRAKE</button><button data-k="gas">GAS</button></div>
+    <div class="tm"><button data-k="horn">📢</button><button data-k="jobs">JOBS</button><button data-k="map">MAP</button></div>
+  </div>
+</div>
+
+<div id="tags"></div>
+
+<div id="board" class="screen" hidden><div class="card"><h2 id="boardTitle">Job board</h2><div id="boardList"></div><div class="rowEnd"><button id="boardRefresh">New offers</button><button id="boardClose">Close [J]</button></div></div></div>
+<div id="garage" class="screen" hidden><div class="card"><h2>Garage</h2><p class="sub">Switching vehicles refuels you, cancels any active job and is shared with other players.</p>
+  <div class="row3" id="garVeh"><button data-veh="car"><span>🚗</span>Hatchback</button><button data-veh="bus"><span>🚌</span>Bus</button><button data-veh="lorry"><span>🚛</span>Lorry</button></div>
+  <div class="swatches" id="garColors"></div><div class="rowEnd"><button id="garClose">Close [V]</button></div></div></div>
+<div id="bigmap" class="screen" hidden><div class="card wide"><h2>Andhra Pradesh <small>(1 game metre = 25 real metres)</small></h2><canvas id="bigcanvas" width="1100" height="1000"></canvas><div class="rowEnd"><span class="legend"><i style="background:#e8a33d"></i>NH <i style="background:#8a8a8a"></i>State hwy <i style="background:#c0392b"></i>Ghat road</span><button id="mapClose">Close [M]</button></div></div></div>
+<div id="pause" class="screen" hidden><div class="card"><h2>Menu</h2>
+  <label>Graphics<select id="quality"><option value="low">Low (fast)</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+  <label>Volume<input id="volume" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+  <div class="row2"><button id="pauseResume" class="big">Resume</button><button id="pauseLeave">Quit to menu</button></div>
+  <div class="note" id="pauseInfo"></div></div></div>
+
+<script src="config.js"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

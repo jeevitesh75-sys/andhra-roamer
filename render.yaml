@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: andhra-roamer-server
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: "echo no build"
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: "*"   # after Vercel deploy, set to https://YOUR-APP.vercel.app
