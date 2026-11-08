@@ -648,7 +648,8 @@ const H = {
     G.scene.updateChunks(A.x, A.z, 60); G.joy && G.joy.release();
   },
 };
-function onEv(k, d, from) { if (k === 'rtc') { G.voice && G.voice.onSignal(d, from); return; } G.storyC.onEv(k, d, from); }
+function onEv(k, d, from) { if (k === 'ai') { if (G.net.isHost) return; G.aiGot = performance.now(); G.aiNet = G.aiNet || {}; for (const [r, x, z, h, mv, rd] of d.a) { const o = G.aiNet[r]; if (!o) G.aiNet[r] = { x, z, h, tx: x, tz: z, th: h, tm: mv, moving: mv, phase: 0, riding: !!rd }; else { o.tx = x; o.tz = z; o.th = h; o.tm = mv; o.riding = !!rd; if (Math.hypot(x - o.x, z - o.z) > 20) { o.x = x; o.z = z; } } } for (const r of Object.keys(G.aiNet)) if (!d.a.some(q => q[0] === r)) delete G.aiNet[r]; return; }
+  if (k === 'rtc') { G.voice && G.voice.onSignal(d, from); return; } G.storyC.onEv(k, d, from); }
 G_expose();
 function G_expose() { G.setStars = setStars; G.hurt = hurt; G.lawChase = () => G.law.chasers() > 0; G.arrestBusy = () => !!(G.arrest || G.dead); }
 function allBlips(full) {
@@ -725,23 +726,42 @@ function rideStep(dt) {
 function endRide() { if (!G.ride) return; const f = G.foot; f.x += Math.cos(f.h) * 2.6; f.z -= Math.sin(f.h) * 2.6; f.y = G.world.heightAt(f.x, f.z); G.ride = null; toast('Got off', 1200); }
 const AI_ORDER = ['mastermind', 'driver', 'hacker', 'insider'];
 function updateAI(dt) {
-  const S = G.storyC, st = S.state, out = [];
-  if (!st || !st.on || (S.cine)) { G.aiList = out; G.chars.sweep('ai_'); return; }
-  const held = new Set(Object.values(st.roles || {})), P = G.foot || G.veh, w = G.world; G.ai = G.ai || {};
-  AI_ORDER.forEach((role, i) => {
-    if (held.has(role)) { delete G.ai[role]; return; }
-    let a = G.ai[role]; const slot = (i + 1) * 1.7, tx = P.x + Math.cos(slot) * 3.2, tz = P.z + Math.sin(slot) * 3.2;
-    if (!a) a = G.ai[role] = { x: tx, z: tz, h: 0, phase: 0, moving: 0, riding: false };
-    if (!G.foot) { a.riding = true; a.x = P.x; a.z = P.z; return; }      // they ride in your vehicle
-    if (a.riding) { a.riding = false; a.x = tx; a.z = tz; }
-    const dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz); if (d > 45) { a.x = tx; a.z = tz; }
-    let spd = d > 2 ? Math.min(7, 1.5 + d * 0.9) : 0; if (spd > 0) { const aim = Math.atan2(dx, dz); for (const off of [0, 0.7, -0.7, 1.4, -1.4]) { const q = aim + off, nx = a.x + Math.sin(q) * (spd * dt + 0.4), nz = a.z + Math.cos(q) * (spd * dt + 0.4); if (!G.law._blocked(nx, nz)) { a.x += Math.sin(q) * spd * dt; a.z += Math.cos(q) * spd * dt; a.h += Math.atan2(Math.sin(q - a.h), Math.cos(q - a.h)) * Math.min(1, dt * 9); break; } } } else a.h += Math.atan2(Math.sin(Math.atan2(P.x - a.x, P.z - a.z) - a.h), Math.cos(Math.atan2(P.x - a.x, P.z - a.z) - a.h)) * Math.min(1, dt * 4);
-    a.moving += ((spd > 0 ? Math.min(1.3, spd / 4.8) : 0) - a.moving) * Math.min(1, dt * 8); a.phase += dt * (spd > 4 ? 12 : 8) * (spd > 0 ? 1 : 0);
-    const R = ROLES[role]; G.chars.set('ai_' + role, { x: a.x, y: w.heightAt(a.x, a.z), z: a.z, h: a.h, phase: a.phase, moving: a.moving, color: R.shirt, pants: R.pants }); out.push({ x: a.x, z: a.z, color: R.color, r: 3.5 });
-    updateTag('ai_' + role, { name: R.emoji + ' ' + R.short + ' (AI)', chat: '', chatAt: 0 }, a, w.heightAt(a.x, a.z) + 2.2, Math.hypot(a.x - P.x, a.z - P.z));
-  });
+  // AI teammates for roles no human plays. ONE shared set per room: the host simulates them and relays; every AI follows ONE human
+  // (round-robin), so with 2 players + 2 AI each player gets their own companion and nobody sees duplicates.
+  const S = G.storyC, st = S.state, out = [], w = G.world, online = G.net && G.net.status === 'online';
+  if (!st || !st.on || S.cine) { G.aiList = out; G.chars.sweep('ai_'); AI_TAGS.forEach(r => dropTag('ai_' + r)); return; }
+  const held = new Set(Object.values(st.roles || {})), free = AI_ORDER.filter(r => !held.has(r)), P = G.foot || G.veh, host = !online || G.net.isHost;
+  if (host) {
+    const humans = [];  // {id, x, z, h, foot}
+    humans.push({ id: online ? G.net.id : 0, x: P.x, z: P.z, h: G.foot ? G.foot.h : G.veh.h, foot: !!G.foot });
+    if (online) for (const [id, r] of G.net.remotes) { if (!(id in (st.roles || {}))) continue; const s = r.snaps[r.snaps.length - 1]; if (s) humans.push({ id, x: s.x, z: s.z, h: s.h, foot: !!(s.f & FLAG.FOOT) }); }
+    const mine = humans.filter(h => online ? (h.id === G.net.id || (st.roles || {})[h.id]) : true).sort((a, b) => a.id - b.id); G.ai = G.ai || {};
+    for (const r of Object.keys(G.ai)) if (!free.includes(r)) delete G.ai[r];
+    free.forEach((role, i) => {
+      const T = mine[i % mine.length] || humans[0], slot = (AI_ORDER.indexOf(role) + 1) * 1.7, tx = T.x + Math.cos(slot) * 3.2, tz = T.z + Math.sin(slot) * 3.2;
+      let a = G.ai[role]; if (!a) a = G.ai[role] = { x: tx, z: tz, h: 0, phase: 0, moving: 0, riding: false };
+      if (!T.foot) { a.riding = true; a.x = T.x; a.z = T.z; return; }
+      if (a.riding) { a.riding = false; a.x = tx; a.z = tz; }
+      const dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz); if (d > 45) { a.x = tx; a.z = tz; }
+      const spd = d > 2 ? Math.min(7, 1.5 + d * 0.9) : 0, face = (ang) => { a.h += Math.atan2(Math.sin(ang - a.h), Math.cos(ang - a.h)) * Math.min(1, dt * 9); };
+      if (spd > 0) { const aim = Math.atan2(dx, dz); let moved = false; for (const off of [0, 0.7, -0.7, 1.4, -1.4]) { const q = aim + off; if (!G.law._blocked(a.x + Math.sin(q) * (spd * dt + 0.4), a.z + Math.cos(q) * (spd * dt + 0.4))) { a.x += Math.sin(q) * spd * dt; a.z += Math.cos(q) * spd * dt; face(q); moved = true; break; } } if (!moved) a.moving = 0; } else face(Math.atan2(T.x - a.x, T.z - a.z));
+      a.moving += ((spd > 0 ? Math.min(1.3, spd / 4.8) : 0) - a.moving) * Math.min(1, dt * 8); a.phase += dt * (spd > 4 ? 12 : 8) * (spd > 0 ? 1 : 0);
+    });
+    G.aiT = (G.aiT || 0) + dt; if (online && G.aiT > 0.1) { G.aiT = 0; G.net.sendEv('ai', { a: Object.entries(G.ai).map(([r, a]) => [r, Math.round(a.x * 10) / 10, Math.round(a.z * 10) / 10, Math.round(a.h * 100) / 100, Math.round(a.moving * 100) / 100, a.riding ? 1 : 0]) }); }
+  } else {
+    G.aiNet = G.aiNet || {}; const age = performance.now() - (G.aiGot || 0);
+    for (const [r, a] of Object.entries(G.aiNet)) { const k = Math.min(1, dt * 10); a.x += (a.tx - a.x) * k; a.z += (a.tz - a.z) * k; a.h += Math.atan2(Math.sin(a.th - a.h), Math.cos(a.th - a.h)) * k; a.phase += dt * 9 * (a.moving > 0.05 ? 1 : 0); a.moving = a.tm; }
+    G.ai = age < 1500 ? G.aiNet : {};
+  }
+  const seen = new Set();
+  for (const role of free) {
+    const a = G.ai && G.ai[role]; if (!a || a.riding) { dropTag('ai_' + role); continue; } seen.add(role); const R = ROLES[role], y = w.heightAt(a.x, a.z);
+    G.chars.set('ai_' + role, { x: a.x, y, z: a.z, h: a.h, phase: a.phase, moving: a.moving, color: R.shirt, pants: R.pants }); out.push({ x: a.x, z: a.z, color: R.color, r: 3.5 });
+    updateTag('ai_' + role, { name: R.emoji + ' ' + R.short + ' (AI)', chat: '', chatAt: 0 }, a, y + 2.2, Math.hypot(a.x - P.x, a.z - P.z));
+  }
+  AI_ORDER.forEach(r => { if (!seen.has(r)) dropTag('ai_' + r); });
   G.aiList = out; G.chars.sweep('ai_');
-  for (const role of AI_ORDER) if (held.has(role) || !G.ai[role] || G.ai[role].riding) dropTag('ai_' + role);
 }
+const AI_TAGS = AI_ORDER;
 
 boot();

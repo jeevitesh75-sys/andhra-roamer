@@ -85,7 +85,7 @@ export class StoryClient {
     if (s.id !== this.curId) this.beginStep(s);
     this.updatePanel();
   }
-  clear() { if (this.G.wpStory) { this.G.wp = null; this.G.wpStory = false; this.G.scene && this.G.scene.setWaypoint(null); } this.wpKey = ''; this.list = []; this.cine && this.endCine(false); $('objective').hidden = true; $('choice').hidden = true; this.closeHack(false); this.G.scene && this.G.scene.setBeacon(null); this.gang = []; this.G.setStars && this.G.setStars(0); }
+  clear() { if (this.G.wpStory) { this.G.wp = null; this.G.wpStory = false; this.G.scene && this.G.scene.setWaypoint(null); } this.wpKey = ''; this.list = []; this.cine && this.endCine(false); $('objective').hidden = true; $('choice').hidden = true; this.closeHack(false); this.G.scene && this.G.scene.setBeacon(null); this.gang = []; this.gangKey = ''; this.gangFor = ''; this.G.setStars && this.G.setStars(0); }
   beginStep(s) {
     const G = this.G, H = this.H, def = stepById(s.id); if (!def) return; this.clear(); this.curId = s.id; this.def = def.step; this.idx = 0; this.sentDone = this.sentReady = ''; this.hackDone = false;
     G.heat = !!def.step.heat; if (G.law) G.law.setCheckpoints(def.step.checkpoints ? [{ ...this.anchor('checkpoint') }] : []);
@@ -213,11 +213,15 @@ export class StoryClient {
   /* ------------------------------------------------ gang fights (the host simulates, everyone sees and shoots) */
   updateGangObj(o, d, P) {
     const G = this.G, A = this.anchor(o.at);
-    if (this.gangFor !== this.curId + this.idx) { this.gangFor = this.curId + this.idx; if (this.isHost) this.spawnGang(o, A); this.gangStart = performance.now(); }
-    const alive = this.gang.filter(g => g.hp > 0).length, since = performance.now() - this.gangStart;
+    const key = this.curId + ':' + o.at + ':' + o.n; this.myGangKey = key;
+    if (this.gangFor !== key) { this.gangFor = key; this.gangStart = performance.now(); if (this.isHost || !this.online) this.ensureGang(o, A, key); }
+    const since = performance.now() - this.gangStart;
+    if (this.online && !this.isHost && this.gangKey !== key && (this.reqT = (this.reqT || 0) - 0.016) < 0) { this.reqT = 3; this.net.sendEv('gangreq', { s: this.curId, k: key, at: o.at, n: o.n, boss: !!o.boss, hp: o.hp || 0, waves: o.waves || [] }, this.net.hostId); }
+    if (this.gangKey !== key) return;
+    const alive = this.gang.filter(g => g.hp > 0).length;
     if (this.gang.length && alive === 0 && since > 1500) this.advanceObj();
-    else if (!this.gang.length && !this.isHost && since > 8000 && this.gangDone) this.advanceObj();
   }
+  ensureGang(o, A, key) { if (this.gangKey === key) return; this.gangKey = key; this.spawnGang(o, A); }
   spawnGang(o, A) {
     const w = this.G.world, rnd = mulberry32(strHash(this.curId)), list = []; let id = 1;
     const put = (kind, hp) => { for (let k = 0; k < 14; k++) { const a = rnd() * 6.283, d = 8 + rnd() * 22, x = A.x + Math.cos(a) * d, z = A.z + Math.sin(a) * d; if (!this.G.law._blocked(x, z)) { list.push({ id: id++, x, z, h: 0, hp, max: hp, kind, st: 'idle', cd: 1 + rnd(), phase: 0, mv: 0 }); return; } } list.push({ id: id++, x: A.x + rnd() * 6, z: A.z + rnd() * 6, h: 0, hp, max: hp, kind, st: 'idle', cd: 1, phase: 0, mv: 0 }); };
@@ -227,7 +231,8 @@ export class StoryClient {
   /** shots from the local player; returns true when a gang member was hit */
   hitGang(id, dmg) { if (this.isHost || !this.online) { const g = this.gang.find(x => x.id === id); if (g && g.hp > 0) { g.hp -= dmg; g.st = 'chase'; if (g.hp <= 0) { g.hp = 0; this.H.toast(g.kind === 'boss' ? 'THE KING IS DOWN!' : 'Enemy down', 1200); } } } else this.net.sendEv('hit', { id, dmg }, this.net.hostId); }
   onEv(k, d, from) {
-    if (k === 'npc' && !this.isHost) { this.gang = d.g.map(a => ({ id: a[0], x: a[1], z: a[2], h: a[3], hp: a[4], kind: a[5] === 1 ? 'boss' : a[5] === 2 ? 'rival' : 'thug', max: a[6], st: 'x', mv: a[7] || 0, phase: performance.now() / 90 })); this.gangDone = d.g.length === 0; }
+    if (k === 'gangreq' && this.isHost) { if (d.s === this.curId && this.gangKey !== d.k) this.ensureGang({ at: d.at, n: d.n, boss: d.boss, hp: d.hp, waves: d.waves }, this.anchor(d.at), d.k); }
+    else if (k === 'npc' && !this.isHost) { this.gangKey = d.k; this.gang = d.g.map(a => ({ id: a[0], x: a[1], z: a[2], h: a[3], hp: a[4], kind: a[5] === 1 ? 'boss' : a[5] === 2 ? 'rival' : 'thug', max: a[6], st: 'x', mv: a[7] || 0, phase: performance.now() / 90 })); this.gangDone = d.g.length === 0; }
     else if (k === 'hit' && this.isHost) this.hitGang(d.id, d.dmg);
     else if (k === 'dmg') this.G.hurt(d.n, 'gang');
     else if (k === 'boss') { this.G.setStars(d.stars, 'wave'); this.H.toast('Police and the rival gang storm the fort!', 3000); }
@@ -246,7 +251,7 @@ export class StoryClient {
     }
     if (this.bossMax) { const b = this.gang.find(g => g.kind === 'boss'); if (b && this.wavesLeft && this.wavesLeft.length && b.hp / b.max <= this.wavesLeft[0].at) { const w = this.wavesLeft.shift(); const A = this.gangAnchor, rnd = Math.random; for (let i = 0; i < w.n; i++) { const a = rnd() * 6.283; this.gang.push({ id: 100 + this.gang.length, x: A.x + Math.cos(a) * 26, z: A.z + Math.sin(a) * 26, h: 0, hp: 60, max: 60, kind: 'rival', st: 'chase', cd: 1, phase: 0, mv: 0 }); } G.setStars(w.stars, 'wave'); if (this.online) this.net.sendEv('boss', { stars: w.stars }); this.H.toast('Police and the rival gang storm the fort!', 3000); } }
     this.gang = this.gang.filter(g => g.hp > 0 || (g.dead || 0) < 6);
-    this.syncT = (this.syncT || 0) + dt; if (this.online && this.syncT > 0.1) { this.syncT = 0; this.net.sendEv('npc', { g: this.gang.map(g => [g.id, Math.round(g.x * 10) / 10, Math.round(g.z * 10) / 10, Math.round(g.h * 100) / 100, g.hp, g.kind === 'boss' ? 1 : g.kind === 'rival' ? 2 : 0, g.max, g.mv]) }); }
+    this.syncT = (this.syncT || 0) + dt; if (this.online && this.syncT > 0.1) { this.syncT = 0; this.net.sendEv('npc', { k: this.gangKey, g: this.gang.map(g => [g.id, Math.round(g.x * 10) / 10, Math.round(g.z * 10) / 10, Math.round(g.h * 100) / 100, g.hp, g.kind === 'boss' ? 1 : g.kind === 'rival' ? 2 : 0, g.max, g.mv]) }); }
   }
   look(g) { return THUG_LOOK[g.kind] || THUG_LOOK.thug; }
 }

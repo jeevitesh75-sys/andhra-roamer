@@ -38,7 +38,7 @@ const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
 const VEHICLES = ['car', 'bus', 'lorry', 'bike'];
 const PARK_CAP = 80;
-const RELAY_KINDS = new Set(['npc', 'hit', 'dmg', 'pol', 'wl', 'fx', 'rad', 'tpteam', 'jail', 'boss', 'shot', 'rtc']);
+const RELAY_KINDS = new Set(['npc', 'hit', 'dmg', 'pol', 'wl', 'fx', 'rad', 'tpteam', 'jail', 'boss', 'shot', 'rtc', 'ai', 'gangreq']);
 const MAX_RELAY = 3000;
 const WORLD_MIN = -2000, WORLD_MAX = 130000;
 const MAX_SPEED_UNITS = 260; // u/s; anything faster than this between updates is rejected as a teleport

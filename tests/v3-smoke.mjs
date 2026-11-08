@@ -30,6 +30,14 @@ await ev(A,()=>{__game.net.send({t:'role',role:'mastermind'});}); await ev(B,()=
 await ev(A,()=>__game.net.send({t:'sstart',ch:1})); await A.waitForTimeout(800);
 console.log('story step A:',await ev(A,()=>__game.net.story.id),'B:',await ev(B,()=>__game.net.story.id),'cine',await ev(A,()=>!!__game.storyC.cine));
 await A.screenshot({path:'/tmp/claude-0/-home-claude/d38ec714-3ad8-5178-8d1f-bc0f7ab12ae2/scratchpad/cine.png'});
+// --- shared AI teammates + gang requested by the non-host
+for(let i=0;i<40;i++){ for(const pg of [A,B]) await ev(pg,()=>{const s=__game.storyC,st=__game.net.story;if(!st||!st.on)return; if(s.cine)s.endCine(); else if(s.def&&s.def.need==='all')s.finishStep(); else if(s.def&&s.def.need==='vote'){const o=s.def.options;__game.net.sendStory('svote',{id:st.id,val:o[0].id});}}); await A.waitForTimeout(100); if(await ev(A,()=>__game.net.story.id)==='c2_rival')break; }
+await A.waitForTimeout(1500);
+const aiKeys=pg=>ev(pg,()=>[...__game.chars.rigs.keys()].filter(k=>k.startsWith('ai_')));
+const hostA=await ev(A,()=>__game.net.isHost); const NH=hostA?B:A, HO=hostA?A:B;
+console.log('step',await ev(A,()=>__game.net.story.id),'AI rigs host',JSON.stringify(await aiKeys(HO)),'nonhost',JSON.stringify(await aiKeys(NH)));
+await ev(NH,()=>{const s=__game.storyC; s.list=[{k:'clear',at:'warehouse',n:5,text:'x'}]; s.idx=0;}); await NH.waitForTimeout(4500);
+const gh=await ev(HO,()=>__game.storyC.gang.length), gn=await ev(NH,()=>__game.storyC.gang.length); console.log('gang host',gh,'nonhost',gn); if(!gh||!gn){console.log('FAIL gang not shared');process.exitCode=1;}
 // skip through everything: cut -> ready; all -> done; vote -> vote
 for(let i=0;i<60;i++){ for(const pg of [A,B]) await ev(pg,()=>{const s=__game.storyC,st=__game.net.story;if(!st||!st.on)return; if(s.cine)s.endCine(); else if(s.def&&s.def.need==='all')s.finishStep(); else if(s.def&&s.def.need==='vote'){const o=s.def.options.filter(x=>!x.secret||st.choices.c4_choice==='protect');__game.net.sendStory('svote',{id:st.id,val:o[o.length-1].id});}}); await A.waitForTimeout(120); if(await ev(A,()=>__game.net.story.ended))break; }
 console.log('story ended:',await ev(A,()=>__game.net.story.ended),'ending',await ev(A,()=>__game.net.story.ending),'final id',await ev(A,()=>__game.net.story.id));

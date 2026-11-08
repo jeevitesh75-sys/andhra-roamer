@@ -49,3 +49,7 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - ⚙ Settings button (top right) with graphics, volumes, mic, full screen, go-to-friends, story.
 - Pedestrians always stay on the footpath.
 - After a team step you now see who you are waiting for and what they must do; "CONTINUE WITHOUT THEM" appears after 20 s.
+
+## v3f
+- AI teammates are now ONE shared set per room (host simulates, everyone sees). Each AI follows one human (round-robin), so with 2 players + 2 AI each of you gets your own companion.
+- Gang fights are started by whichever player reaches the fight first (non-host asks the host), so nobody is left waiting with no objective.
