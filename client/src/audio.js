@@ -15,8 +15,8 @@ export class AudioFX {
   }
   setVolume(v) { this.vol = v; if (this.master) this.master.gain.value = v; }
   update(rpm, throttle, skid, kind) {
-    if (!this.ctx) return; const t = this.ctx.currentTime, base = kind === 'car' ? 38 : kind === 'bus' ? 30 : 26;
-    const f = base + rpm * (kind === 'car' ? 150 : 110);
+    if (!this.ctx) return; const t = this.ctx.currentTime, base = kind === 'car' || kind === 'bike' ? 38 : kind === 'bus' ? 30 : 26;
+    const f = base + rpm * (kind === 'car' || kind === 'bike' ? 150 : 110);
     this.o1.frequency.setTargetAtTime(f, t, 0.05); this.o2.frequency.setTargetAtTime(f * 0.5, t, 0.05);
     this.lp.frequency.setTargetAtTime(350 + rpm * 900 + throttle * 300, t, 0.08);
     this.engGain.gain.setTargetAtTime(0.10 + 0.12 * throttle + 0.05 * rpm, t, 0.08);
@@ -24,7 +24,7 @@ export class AudioFX {
   }
   horn(kind = 'car', gain = 0.25) {
     if (!this.ctx) return; const c = this.ctx, t = c.currentTime, g = c.createGain(); g.gain.value = 0; g.connect(this.master);
-    const fr = kind === 'car' ? [420, 535] : kind === 'bus' ? [330, 420] : [260, 330];
+    const fr = kind === 'car' || kind === 'bike' ? [420, 535] : kind === 'bus' ? [330, 420] : [260, 330];
     for (const f of fr) { const o = c.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(g); o.start(t); o.stop(t + 0.55); }
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + 0.02); g.gain.setValueAtTime(gain, t + 0.45); g.gain.linearRampToValueAtTime(0, t + 0.55);
   }
@@ -36,11 +36,6 @@ export class AudioFX {
   shot() {
     if (!this.ctx) return; const c = this.ctx, s = c.createBufferSource(); s.buffer = this.noiseBuf; const g = c.createGain(), f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 900;
     g.gain.setValueAtTime(0.35, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.12); s.connect(f); f.connect(g); g.connect(this.master); s.start(); s.stop(c.currentTime + 0.14);
-  }
-  radio() {
-    if (!this.ctx) return; const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain(), s = c.createBufferSource(), f = c.createBiquadFilter();
-    o.type = 'square'; o.frequency.value = 1500; g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09); o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.1);
-    s.buffer = this.noiseBuf; f.type = 'bandpass'; f.frequency.value = 1800; const g2 = c.createGain(); g2.gain.setValueAtTime(0.12, t + 0.1); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.5); s.connect(f); f.connect(g2); g2.connect(this.master); s.start(t + 0.1); s.stop(t + 0.55);
   }
   chime() {
     if (!this.ctx) return; const c = this.ctx, t = c.currentTime;

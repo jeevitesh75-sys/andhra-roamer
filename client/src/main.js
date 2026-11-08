@@ -2,14 +2,18 @@
 import { SURF } from './geo.js';
 import { loadRegionData, createOsmWorld } from './osmworld.js';
 import { Crowd, Police } from './peds.js';
-import { Story, ROLES, BLURB, CHAPTERS } from './story.js';
-import { Voice } from './voice.js';
 import { Vehicle, SPECS, FIXED_DT, MAX_STEPS } from './physics.js';
 import { Scene3D } from './scene.js';
 import { Net, FLAG } from './net.js';
 import { MapView } from './map2d.js';
 import { generateOffers, JobRunner, FUEL_PRICE, rankFor } from './jobs.js';
 import { AudioFX } from './audio.js';
+import { Characters } from './characters.js';
+import { ParkedLot, distToVehicle } from './parked.js';
+import { Law } from './law.js';
+import { Joystick } from './joystick.js';
+import { StoryClient } from './story.js';
+import { ROLES, NPCS } from './storydata.js';
 
 const $ = id => document.getElementById(id);
 const COLORS = ['#d9482b', '#f1c40f', '#2e86de', '#27ae60', '#ecf0f1', '#8e44ad', '#e67e22', '#2c3e50'];
@@ -89,11 +93,7 @@ async function startGame() {
     const q = G.save.quality || (matchMedia('(max-width: 800px)').matches ? 'low' : 'medium');
     try { G.scene = new Scene3D(G.T, $('game'), G.world, q); } catch (e) { $('ldErr').textContent = 'Graphics failed to start: ' + e.message; console.error(e); return; }
     G.veh = new Vehicle(prof.veh, G.world); G.crowd = new Crowd(G.world); G.police = new Police(G.world); G.wp = null;
-    G.voice = new Voice(G.net, toast);
-    G.story = new Story({ me: () => (G.net && G.net.id) || 0, ids: () => [(G.net && G.net.id) || 0, ...(G.net ? [...G.net.remotes.keys()] : [])].sort((a, b) => a - b),
-      send: o => { if (G.net) G.net.send({ t: 'st', ...o }); }, say: t => toast(t, 3500), reward: n => { G.money += n; G.earned += n; toast('Story reward ' + rs(n), 4000); },
-      police: st => { if (!G.police.active) G.police.start(G.veh, st); else if (G.police.stars < st) G.police.raise(G.veh, st - G.police.stars); G.sirenT = 0; }, stopPolice: () => { if (G.police.active) G.police.stop(); },
-      onStep: (s, mine) => { const p = storyLoc(s.loc); if ((s.t === 'goto' || s.t === 'hack') && mine && p) setWaypoint(p); else if (G.wp && G.storyWp) setWaypoint(null); G.storyWp = (s.t === 'goto' || s.t === 'hack') && mine; G.stKey = ''; } });
+    G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.chars = new Characters(G.T, G.scene.scene); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
     G.money = G.save.money || 0; G.earned = G.save.earned || 0;
     initInput(); initHud();
   } else { G.veh.setType(prof.veh); G.scene.removeModel('me'); }
@@ -103,15 +103,20 @@ async function startGame() {
   G.camYaw = G.veh.h; G.orbit = 0; G.runner = null; G.scene.setBeacon(null);
   // initial terrain ring, a few chunks per frame so the progress bar moves
   let left = 1; while (left > 0) { left = G.scene.updateChunks(dp.x, dp.z, 4); progress('Rendering the world...', 0.5 + 0.5 * (1 - Math.min(1, left / 60))); await nextFrame(); }
-  G.scene.model('me', prof.veh, prof.color);
+  G.vcolor = prof.color; G.scene.model('me', prof.veh, G.vcolor);
   $('loading').hidden = true; $('hud').hidden = false;
   if ('ontouchstart' in window || navigator.maxTouchPoints > 0) { $('touch').hidden = false; G.touch.enabled = true; $('hud').classList.add('is-touch'); }
+  setFootMode(!!G.foot); if (!G.joy) G.joy = new Joystick($('joyZone'), $('joyBase'), $('joyKnob')); $('micBtn').style.display = 'none';
   G.swatches($('garColors'), c2 => { G.profile.color = c2; applyVehicleChange(); });
   G.vehBtns($('garVeh'), v => { G.profile.veh = v; applyVehicleChange(); });
   persist();
   // network
-  if (!G.net) G.net = new Net({ onStatus: onNetStatus, onChat: m => addChat(m.name, m.text), onRtc: m => { if (G.voice) G.voice.handle(m); }, onStory: m => { if (G.story && m.id !== G.net.id) G.story.onMsg(m, m.id); }, onJoin: r => { toast(r.name + ' joined'); if (G.voice) G.voice.onJoin(r); }, onLeave: r => { toast(r.name + ' left'); if (G.voice) G.voice.onLeave(r); G.scene.setFoot(null, 'r' + r.id); G.scene.removeModel('r' + r.id); dropTag(r.id); },
-    onLeaveAll: () => { for (const k of [...G.scene.models.keys()]) if (k.startsWith('r')) G.scene.removeModel(k); clearTags(); }, onError: m => toast(m, 3500) });
+  if (!G.net) G.net = new Net({ onStatus: onNetStatus, onChat: m => addChat(m.name, m.text), onJoin: r => { toast(r.name + ' joined'); }, onLeave: r => { toast(r.name + ' left'); G.scene.removeModel('r' + r.id); G.chars.remove('r' + r.id); dropTag(r.id); },
+    onLeaveAll: () => { for (const k of [...G.scene.models.keys()]) if (k.startsWith('r')) G.scene.removeModel(k); clearTags(); }, onError: m => toast(m, 3500),
+    onWelcome: m => { G.lot.dyn.clear(); G.lot.taken = new Set(m.taken || []); for (const v of m.parked || []) G.lot.dyn.set(v.id, v); G.storyC.onState(m.story); },
+    onParkAdd: (v, by) => { if (by === G.net.id && G.myPark && G.myPark.startsWith('me~')) { const e = G.lot.dyn.get(G.myPark); G.lot.dyn.delete(G.myPark); G.lot.dyn.set(v.id, { ...(e || {}), ...v, mine: true }); G.myPark = v.id; } else G.lot.dyn.set(v.id, v); },
+    onParkDel: (id, by) => { G.lot.dyn.delete(id); if (/^s\d+$/.test(id)) G.lot.taken.add(id); if (id === G.myPark && by !== G.net.id) { G.myPark = null; toast('Someone took your vehicle!', 2500); } },
+    onEnter: onEnterReply, onStory: s => G.storyC.onState(s), onHost: () => {}, onEv: (k, d, from) => onEv(k, d, from) });
   const url = new URLSearchParams(location.search).get('server') || (window.GAME_CONFIG && window.GAME_CONFIG.SERVER_URL) || '';
   G.net.disconnect();
   if (url) G.net.connect(url, { name: prof.name, veh: prof.veh, color: prof.color, room: prof.region + '-' + (prof.room || 'open') });
@@ -124,7 +129,7 @@ async function startGame() {
 
 function applyVehicleChange() {
   const p = G.profile; if (p.veh !== G.veh.type) { G.veh.setType(p.veh); G.runner = null; G.scene.setBeacon(null); toast('Switched to ' + SPECS[p.veh].label + ' (refuelled)'); }
-  G.scene.model('me', p.veh, p.color); G.net && G.net.sendVehicle(p.veh, p.color); persist();
+  G.vcolor = p.color; G.scene.model('me', p.veh, G.vcolor); G.net && G.net.sendVehicle(p.veh, G.vcolor); persist();
 }
 function persist() { const p = G.profile; store({ ...G.save, name: p.name, veh: p.veh, color: p.color, region: p.region, city: p.city, room: p.room, money: G.money, earned: G.earned, quality: G.scene ? G.scene.qName : G.save.quality }); }
 
@@ -151,8 +156,7 @@ function initInput() {
     else if (k === 'KeyH') { G.audio.horn(G.veh.type); }
     else if (k === 'KeyG') e.preventDefault();
     else if (k === 'KeyE') toggleFoot();
-    else if (k === 'KeyO') toggleStory();
-    else if (k === 'KeyB') G.voice && G.voice.toggle().then(on => { G.voiceOn = on; });
+    else if (k === 'KeyT') G.storyC.openLobby();
   });
   addEventListener('keyup', e => { G.keys[e.code] = false; if (e.code === 'Tab') $('players').hidden = true; });
   addEventListener('blur', () => { G.keys = {}; });
@@ -162,9 +166,8 @@ function initInput() {
     const up = e => { look.delete(e.pointerId); if (!look.size) { G.looking = false; G.lastDrag = performance.now(); } };
     cvs.addEventListener('pointerup', up); cvs.addEventListener('pointercancel', up);
     cvs.addEventListener('contextmenu', e => e.preventDefault());
-    cvs.addEventListener('pointermove', e => { const p = look.get(e.pointerId); if (!p) return; const k = e.pointerType === 'mouse' ? 0.006 : 0.008; G.orbit -= (e.clientX - p.x) * k; G.orbitY = clamp(G.orbitY + (e.clientY - p.y) * 0.03, -2.5, 9); p.x = e.clientX; p.y = e.clientY; G.lastDrag = performance.now(); G.freeLook = true; });
+    cvs.addEventListener('pointermove', e => { const p = look.get(e.pointerId); if (!p) return; const k = e.pointerType === 'mouse' ? 0.006 : G.foot ? 0.0055 : 0.008; G.orbit -= (e.clientX - p.x) * k; G.orbitY = clamp(G.orbitY + (e.clientY - p.y) * 0.03, -2.5, 9); p.x = e.clientX; p.y = e.clientY; G.lastDrag = performance.now(); G.freeLook = true; });
   }
-  $('story').addEventListener('click', e => { const S = G.story; if (!S) return; const b = e.target.closest('button[data-v]'); if (b) { S.vote(b.dataset.v); $('story').innerHTML = '<p>Vote cast - waiting for the others...</p>'; G.stKey = 'voted'; return; } if (S.done) { S.active = false; S.done = false; $('story').hidden = true; return; } S.tap(); });
   $('game').addEventListener('wheel', e => { G.zoom = clamp(G.zoom * (e.deltaY > 0 ? 1.08 : 0.92), 0.6, 1.9); }, { passive: true });
   addEventListener('resize', () => G.scene && G.scene.resize());
   // minimap zoom: tap / wheel / + -
@@ -191,8 +194,13 @@ function initInput() {
     m.cx = clamp(m.cx - (e.clientX - p.x) * k / base, 0, G.world.WORLD.w); m.cz = clamp(m.cz - (e.clientY - p.y) * k / base, 0, G.world.WORLD.h); p.x = e.clientX; p.y = e.clientY; drawBigMap();
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) G.keys = {}; });
+  for (const b of document.querySelectorAll('#footBtns button')) {
+    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'act') toggleFoot(); };
+    b.addEventListener('touchstart', on(true), { passive: false }); b.addEventListener('touchend', on(false), { passive: false }); b.addEventListener('touchcancel', on(false), { passive: false });
+    b.addEventListener('mousedown', on(true)); b.addEventListener('mouseup', on(false));
+  }
   for (const b of document.querySelectorAll('#touch button')) {
-    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); if (v && k === 'act') toggleFoot(); if (v && k === 'story') toggleStory(); if (v && k === 'voice' && G.voice) G.voice.toggle(); };
+    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); if (v && k === 'act') toggleFoot(); if (v && k === 'story') G.storyC.openLobby(); };
     b.addEventListener('touchstart', on(true), { passive: false }); b.addEventListener('touchend', on(false), { passive: false }); b.addEventListener('touchcancel', on(false), { passive: false });
   }
 }
@@ -231,7 +239,7 @@ function togglePause(v) { closeModals(); $('pause').hidden = !v; G.paused = v; $
 function toggleMap() { const open = $('bigmap').hidden; closeModals(); $('bigmap').hidden = !open; if (open) drawBigMap(); }
 function toggleGarage() { const open = $('garage').hidden; closeModals(); $('garage').hidden = !open; }
 function toggleBoard() { const open = $('board').hidden; closeModals(); if (!open) return; $('board').hidden = false; renderBoard(); }
-function drawBigMap() { const c = $('bigcanvas'), M = G.mapV || (G.mapV = { zoom: 1, cx: null, cz: null }); G.map.draw(c.getContext('2d'), c.width, c.height, { full: true, zoom: M.zoom, mcx: M.cx, mcz: M.cz, me: G.veh, wp: G.wp, target: G.runner && G.runner.target, players: remotePins() }); }
+function drawBigMap() { const c = $('bigcanvas'), M = G.mapV || (G.mapV = { zoom: 1, cx: null, cz: null }); G.map.draw(c.getContext('2d'), c.width, c.height, { full: true, theme: 'gta3', zoom: M.zoom, mcx: M.cx, mcz: M.cz, me: G.foot || G.veh, wp: G.wp, target: G.runner && G.runner.target, players: remotePins(), blips: allBlips(true) }); }
 function remotePins() { const out = []; if (!G.net) return out; for (const r of G.net.remotes.values()) { const s = r.snaps[r.snaps.length - 1]; if (s) out.push({ x: s.x, z: s.z, color: r.color, name: r.name }); } return out; }
 function renderPlayers() {
   const rows = [{ name: G.profile.name + ' (you)', veh: G.veh.type, money: G.money }, ...(G.net ? [...G.net.remotes.values()].map(r => ({ name: r.name, veh: r.veh, money: r.money })) : [])];
@@ -288,20 +296,12 @@ function onHit(ev) {
   if (ev.kind === 'human') { toast('You hit a pedestrian! The police are after you - escape!', 4500); if (!G.police.active) { if (G.police.start(G.veh, 1)) G.sirenT = 0; } else G.police.raise(G.veh, 1); }
   else { const fine = ev.kind === 'cow' ? 150 : ev.kind === 'goat' ? 80 : 50, paid = Math.min(G.money, fine); G.money -= paid; toast(`You hit a ${ev.kind}! Fine ${rs(paid)}`, 3000); }
 }
-function radioSay(t) { const r = $('radio'); r.textContent = '📻 ' + t; r.hidden = false; clearTimeout(G.radioHide); G.radioHide = setTimeout(() => { r.hidden = true; }, 3800); G.audio.radio(); }
-function jailMe() {
-  const w = G.world, v = G.veh, ps = w.policeStations || []; let best = null, bd = 1e12;
-  for (const s of ps) { const d = (s.x - v.x) ** 2 + (s.z - v.z) ** 2; if (d < bd) { bd = d; best = s; } }
-  const pt = best ? { x: best.x, z: best.z } : storyLoc(0), sn = w.snapToRoad(pt.x, pt.z, 120, 7), q = sn ? w.roadPoint(sn.road, sn.s, 3, {}) : { x: pt.x, z: pt.z, h: 0 };
-  v.reset(q.x, q.z, q.h); G.foot = null; G.jail = { t: 7, st: best ? best.name : 'the station' }; G.camInit = false; G.camYaw = q.h;
-}
-function policeResult(res) { policeResult0(res); if (G.story) G.story.policeResult(res); }
-function policeResult0(res) {
-  
+function policeResult(res) {
+  const ls = G.lastStars; 
   for (const k of [...G.scene.models.keys()]) if (k.startsWith('pol')) G.scene.removeModel(k);
   if (res === 'escaped') toast('You escaped the police!', 3500);
   else if (res === 'cleared') toast('All police units wrecked. You are clear!', 3500);
-  else { jailMe(); const fine = Math.min(G.money, 500 * Math.max(1, G.lastStars || 1)); G.money -= fine; G.veh.vx = G.veh.vz = 0; toast(`Caught by the police! Fine ${rs(fine)}`, 4500); }
+  else { G.veh.vx = G.veh.vz = 0; startArrest('Caught by the police'); }
 }
 function setWaypoint(p) { G.wp = p; G.scene.setWaypoint(p); if (p) toast('Pin set - follow the blue arrow', 2000); }
 
@@ -315,8 +315,7 @@ function gunFrame(dt, me, pose, v) {
   const dx = Math.sin(yaw) * Math.cos(pit), dy = Math.sin(pit), dz = Math.cos(yaw) * Math.cos(pit), RANGE = 160;
   let best = RANGE, hit = null;
   const test = (x, y, z, r, fn) => { const rx = x - ox, ry = y - oy, rz = z - oz, t = rx * dx + ry * dy + rz * dz; if (t < 1 || t > best) return; const cx = ox + dx * t - x, cy = oy + dy * t - y, cz = oz + dz * t - z; if (cx * cx + cy * cy + cz * cz < r * r) { best = t; hit = fn; } };
-  G.police.cars.forEach((P, i) => { if (P.hp > 0) test(P.car.x, (P.car.y || 0) + 1, P.car.z, 2.4, () => { if (G.police.damage(i, 25)) { toast('Police unit destroyed! Wanted level up', 1800); G.audio.crash(3); if (!(G.story && G.story.active)) G.police.raise(G.veh, 1); if (G.story) G.story.kill(); } }); });
-  G.police.cops.forEach((c, i) => test(c.x, 0.9, c.z, 0.6, () => { if (G.police.killCop(i)) { G.police.raise(G.veh, 1); G.audio.crash(2); } }));
+  G.police.cars.forEach((P, i) => { if (P.hp > 0) test(P.car.x, (P.car.y || 0) + 1, P.car.z, 2.4, () => { if (G.police.damage(i, 25)) { toast('Police unit destroyed! Wanted level up', 1800); G.audio.crash(3); G.police.raise(G.veh, 1); } }); });
   for (const e of G.crowd.list) if (e.state !== 'hit') test(e.x, (e.lift || 0) + 0.9, e.z, e.kind === 'human' ? 0.6 : 0.7, () => {
     e.state = 'hit'; e.t = 0; e.vy = 3; e.hx = dx * 4; e.hz = dz * 4; e.spin = 3;
     if (e.kind === 'human') { toast('You shot a pedestrian! Wanted level up', 2500); if (!G.police.active) G.police.start(G.veh, 2); else if (!G.wantedCd || performance.now() > G.wantedCd) { G.police.raise(G.veh, 1); G.wantedCd = performance.now() + 4000; } } });
@@ -324,16 +323,17 @@ function gunFrame(dt, me, pose, v) {
   G.scene.tracer(ox + dx * 1.5, oy + dy * 1.5, oz + dz * 1.5, ex, ey, ez); if (hit) hit();
 }
 
-/* ------------------------------------------------ on foot: exit / enter vehicle */
+/* ------------------------------------------------ on foot: exit / enter vehicle, joystick, pistol, health, arrest */
 const PARK = { throttle: 0, steer: 0, brake: 1, handbrake: true };
 function inBuilding(x, z, m = 0.45) { for (const b of G.world.buildingsNear(x, z)) { const dx = x - b.x, dz = z - b.z, lx = dx * b.c + dz * b.s, lz = -dx * b.s + dz * b.c; if (Math.abs(lx) < b.hw + m && Math.abs(lz) < b.hd + m) return true; } return false; }
 function nearVehicle(x, z, skipOwn) {
-  const v = G.veh; if (!skipOwn) { const dx = x - v.x, dz = z - v.z, s = Math.sin(v.h), c = Math.cos(v.h), lz = dx * s + dz * c, lx = dx * c - dz * s; if (Math.abs(lz) < v.spec.len / 2 + 0.5 && Math.abs(lx) < v.spec.wid / 2 + 0.5) return true; }
+  const v = G.veh; if (!skipOwn && !G.myPark) { if (distToVehicle(x, z, v.x, v.z, v.h, v.spec) < 0.5) return true; }
+  if (G.lot.blocks(x, z, 0.7)) return true;
   for (const n of G.scene.npcPos) if ((n.x - x) ** 2 + (n.z - z) ** 2 < 6.5) return true;
   if (G.police.active) for (const P of G.police.cars) if ((P.car.x - x) ** 2 + (P.car.z - z) ** 2 < 8) return true;
   return false;
 }
-function goodSpot(x, z) { return !inBuilding(x, z) && G.world.heightAt(x, z) > -0.4 && !nearVehicle(x, z, false); }
+function goodSpot(x, z) { return !inBuilding(x, z) && G.world.heightAt(x, z) > -0.4 && !nearVehicle(x, z, true); }
 function findExitSpot() {
   const v = G.veh, s = Math.sin(v.h), c = Math.cos(v.h), hw = v.spec.wid / 2 + 1.0, hl = v.spec.len / 2 + 1.3;
   const cand = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1.6, 0], [1.6, 0], [-1, -0.8], [1, -0.8], [-1, 0.8], [1, 0.8], [0, -1.8], [0, 1.8]];
@@ -341,58 +341,107 @@ function findExitSpot() {
   const sn = G.world.snapToRoad(v.x, v.z, 40, 7); if (sn) { for (const off of [-4, 4, -7, 7]) { const p = G.world.roadPoint(sn.road, sn.s, off, {}); if (goodSpot(p.x, p.z)) return { x: p.x, z: p.z }; } }
   return null;
 }
-function toggleFoot() {
-  if (G.paused || G.jail || modalOpen() || typing() || (G.foot && G.foot.anim)) return; const v = G.veh;
-  if (!G.foot) {
-    if (v.speed > 4) { toast('Stop the vehicle first to get out', 1800); return; }
-    const sp = findExitSpot(); if (!sp) { toast('No safe place to get out here', 2000); return; }
-    G.foot = { x: v.x, z: v.z, y: v.y || 0, h: v.h, vy: 0, lift: 0, phase: 0, moving: 0, s: 0.3, anim: { type: 'exit', t: 0, fx: v.x, fz: v.z, tx: sp.x, tz: sp.z } }; G.veh.vx = G.veh.vz = 0; toast('Out of the vehicle - walk with WASD, Shift to run, Space to jump, E near it to get back in', 3500);
-  } else {
-    const f = G.foot, d = Math.hypot(f.x - v.x, f.z - v.z); if (d > 6 + v.spec.len / 2) { toast(`Your vehicle is ${Math.round(d)} m away - walk back to it`, 2200); return; }
-    f.anim = { type: 'enter', t: 0, fx: f.x, fz: f.z, tx: v.x, tz: v.z };
-  }
+function newFoot(x, z, h, anim) { return { x, z, y: G.world.heightAt(x, z), h, vy: 0, lift: 0, phase: 0, moving: 0, s: 1, crouch: 0, anim: anim || null, shotT: 0 }; }
+function setFootMode(on) { const hud = $('hud'); hud.classList.toggle('is-foot', on); hud.classList.toggle('is-drive', !on); if (G.touch.enabled) { for (const id of ['joyZone', 'joyBase', 'footBtns']) $(id).hidden = !on; if (!on && G.joy) G.joy.release(); } }
+function exitVehicle(silent) {
+  const v = G.veh; if (G.foot || G.dead) return;
+  if (!silent && v.speed > 4) { toast('Stop the vehicle first to get out', 1800); return; }
+  const sp = silent ? { x: v.x + 3, z: v.z } : findExitSpot(); if (!sp) { toast('No safe place to get out here', 2000); return; }
+  const id = 'me~' + Date.now(); G.myPark = id; G.lot.dyn.set(id, { id, type: v.type, color: G.vcolor, x: v.x, z: v.z, h: v.h, fuel: v.fuel, mine: true });
+  if (G.net && G.net.status === 'online') G.net.sendExit(v.type, G.vcolor, v.x, v.z, v.h);
+  v.vx = v.vz = 0; G.foot = newFoot(v.x, v.z, v.h, { type: 'exit', t: 0, fx: v.x, fz: v.z, tx: sp.x, tz: sp.z }); G.foot.s = 0.5; G.scene.removeModel('me'); setFootMode(true);
+  if (!silent) toast('Out of the vehicle. Use the joystick / WASD, Shift runs, E near a vehicle to get in', 3500);
 }
+function tryEnter() {
+  const f = G.foot; if (!f || f.anim || G.dead) return; const n = G.lot.nearest(f.x, f.z); if (!n) { toast('No vehicle close enough', 1500); return; }
+  const e = n.e; if (e.id.startsWith('me~') || !G.net || G.net.status !== 'online') return onEnterReply({ ok: true, id: e.id, v: e });
+  G.net.sendEnter(e.id, e.static ? { type: e.type, color: e.color, x: e.x, z: e.z, h: e.h } : undefined);
+}
+function onEnterReply(m) {
+  const f = G.foot; if (!f || f.anim) return; if (!m.ok) { toast('Someone else got in first', 1800); return; }
+  const e = G.lot.get(m.id) || m.v; if (!e) return; f.anim = { type: 'enter', t: 0, fx: f.x, fz: f.z, tx: e.x, tz: e.z, entry: { ...e } };
+}
+function finishEnter(e) {
+  const v = G.veh; G.lot.dyn.delete(e.id); if (e.static) G.lot.taken.add(e.id);
+  if (e.id === G.myPark || e.mine) { G.myPark = null; if (v.type !== e.type) v.setType(e.type); } else { if (v.type !== e.type) v.setType(e.type); v.fuel = v.spec.tank; if (G.myPark) { /* my old vehicle stays parked */ } G.myPark = null; v.reset(e.x, e.z, e.h); }
+  G.vcolor = e.color; G.profile.veh = e.type; G.foot = null; G.scene.setFoot(null); G.chars.remove('me'); G.camYaw = v.h; G.orbit = 0; setFootMode(false); toast('Got in', 1200);
+}
+function toggleFoot() { if (G.paused || modalOpen() || typing() || G.dead || G.arrest || (G.story && G.story.cine) || (G.foot && G.foot.anim)) return; if (!G.foot) exitVehicle(); else tryEnter(); }
 const footProxy = { x: 0, z: 0, h: 0, u: 0, vx: 0, vz: 0, speed: 0, spec: { len: 0.6, wid: 0.6 } };
+function footInput() {
+  const K = G.keys, T = G.touch, j = G.joy; let ax = 0, ay = 0, mag = 0, run = false;
+  if (j && j.mag > 0) { ax = j.x; ay = j.y; mag = j.mag; run = mag > 0.85; }
+  else { ay = ((K.KeyW || K.ArrowUp) ? 1 : 0) - ((K.KeyS || K.ArrowDown) ? 1 : 0); ax = ((K.KeyD || K.ArrowRight) ? 1 : 0) - ((K.KeyA || K.ArrowLeft) ? 1 : 0); mag = Math.min(1, Math.hypot(ax, ay)); run = !!(K.ShiftLeft || K.ShiftRight); }
+  return { ax, ay, mag, run, jump: !!(K.Space || T.jump), shoot: !!(K.KeyG || T.shoot) };
+}
 function footStep(dt) {
-  const f = G.foot, K = G.keys, T = G.touch, w = G.world, v = G.veh; if (!f) return;
-  if (f.anim) { const a = f.anim; a.t += dt / 0.5; const k = Math.min(1, a.t), e = k * k * (3 - 2 * k); f.x = a.fx + (a.tx - a.fx) * e; f.z = a.fz + (a.tz - a.fz) * e; f.y = w.heightAt(f.x, f.z); f.s = a.type === 'exit' ? 0.3 + 0.7 * e : 1 - 0.8 * e; f.moving = 0.6; f.phase += dt * 8;
-    if (k >= 1) { if (a.type === 'enter') { G.foot = null; G.scene.setFoot(null); G.camYaw = v.h; G.orbit = 0; toast('Back in the vehicle', 1200); return; } f.anim = null; f.s = 1; } }
+  const f = G.foot, w = G.world, v = G.veh; if (!f) return;
+  if (f.anim) { const a = f.anim; a.t += dt / 0.55; const k = Math.min(1, a.t), e = k * k * (3 - 2 * k); f.x = a.fx + (a.tx - a.fx) * e; f.z = a.fz + (a.tz - a.fz) * e; f.y = w.heightAt(f.x, f.z);
+    if (a.type === 'exit') { f.s = 0.5 + 0.5 * e; f.crouch = 1 - e; } else { f.s = 1 - 0.7 * e; f.crouch = e; } f.moving = 0.3; f.phase += dt * 6;
+    if (k >= 1) { if (a.type === 'enter') { finishEnter(a.entry); return; } f.anim = null; f.s = 1; f.crouch = 0; } }
+  else if (G.arrest || G.dead || (G.story && G.story.cine)) { f.moving = 0; }
   else {
-    const yaw = G.camYaw + G.orbit, fx = Math.sin(yaw), fz = Math.cos(yaw), rx = -Math.cos(yaw), rz = Math.sin(yaw);
-    const fw = ((K.KeyW || K.ArrowUp || T.gas) ? 1 : 0) - ((K.KeyS || K.ArrowDown || T.rev || T.brake) ? 1 : 0), st = ((K.KeyD || K.ArrowRight || T.right) ? 1 : 0) - ((K.KeyA || K.ArrowLeft || T.left) ? 1 : 0);
-    let mx = fx * fw + rx * st, mz = fz * fw + rz * st; const ml = Math.hypot(mx, mz), run = K.ShiftLeft || K.ShiftRight || T.gas, spd = ml > 0 ? (run ? 6.2 : 2.4) : 0;
-    if (ml > 0) { mx /= ml; mz /= ml; f.h = lerpAngle(f.h, Math.atan2(mx, mz), 1 - Math.exp(-12 * dt)); }
+    const I = footInput(), yaw = G.camYaw + G.orbit, fx = Math.sin(yaw), fz = Math.cos(yaw), rx = -Math.cos(yaw), rz = Math.sin(yaw);
+    let mx = fx * I.ay + rx * I.ax, mz = fz * I.ay + rz * I.ax; const ml = Math.hypot(mx, mz);
+    let spd = 0; if (ml > 0) { const m = Math.min(1, I.mag || 1); spd = G.joy && G.joy.mag > 0 ? (m < 0.35 ? 0.9 + m * 3 : m < 0.8 ? 2.0 + (m - 0.35) * 5 : 4.3 + (m - 0.8) * 10) : (I.run ? 6.2 : 3.6); mx /= ml; mz /= ml; }
+    if (ml > 0 && !f.aiming) f.h = lerpAngle(f.h, Math.atan2(mx, mz), 1 - Math.exp(-12 * dt));
     let nx = f.x + mx * spd * dt, nz = f.z + mz * spd * dt;
     if (w.heightAt(nx, nz) < -0.4) { nx = f.x; nz = f.z; }
     for (const b of w.buildingsNear(nx, nz)) { const dx = nx - b.x, dz = nz - b.z, lx = dx * b.c + dz * b.s, lz = -dx * b.s + dz * b.c, ex = b.hw + 0.4 - Math.abs(lx), ez = b.hd + 0.4 - Math.abs(lz); if (ex > 0 && ez > 0) { let px = 0, pz = 0; if (ex < ez) px = Math.sign(lx || 1) * ex; else pz = Math.sign(lz || 1) * ez; nx += px * b.c - pz * b.s; nz += px * b.s + pz * b.c; } }
-    { const dx = nx - v.x, dz = nz - v.z, s = Math.sin(v.h), c = Math.cos(v.h), lz = dx * s + dz * c, lx = dx * c - dz * s, ex = v.spec.wid / 2 + 0.4 - Math.abs(lx), ez = v.spec.len / 2 + 0.4 - Math.abs(lz);
-      if (ex > 0 && ez > 0) { let px = 0, pz = 0; if (ex < ez) px = Math.sign(lx || 1) * ex; else pz = Math.sign(lz || 1) * ez; nx += px * c + pz * s; nz += -px * s + pz * c; } }
-    f.x = nx; f.z = nz; f.moving += ((spd > 0 ? (run ? 1.3 : 0.8) : 0) - f.moving) * Math.min(1, dt * 10); f.phase += dt * (spd > 4 ? 12 : 8) * (spd > 0 ? 1 : 0);
-    const gy = w.heightAt(f.x, f.z); if (f.lift <= 0.001 && f.vy <= 0 && (K.Space || T.fire) && !G.jumpHeld) { f.vy = 5.2; G.jumpHeld = true; } if (!(K.Space || T.fire)) G.jumpHeld = false;
+    const pp = { x: nx, z: nz }; G.lot.pushOut(pp); nx = pp.x; nz = pp.z;
+    f.speed = spd; f.x = nx; f.z = nz; f.moving += ((spd > 0 ? Math.min(1.3, spd / 4.8) : 0) - f.moving) * Math.min(1, dt * 10); f.phase += dt * (spd > 4 ? 12 : 8) * (spd > 0 ? 1 : 0);
+    const gy = w.heightAt(f.x, f.z); if (f.lift <= 0.001 && f.vy <= 0 && I.jump && !G.jumpHeld) { f.vy = 5.2; G.jumpHeld = true; } if (!I.jump) G.jumpHeld = false;
     f.vy -= 14 * dt; f.lift += f.vy * dt; if (f.lift < 0) { f.lift = 0; f.vy = 0; } f.y = gy + f.lift;
+    footShoot(dt, I);
   }
-  footProxy.x = f.x; footProxy.z = f.z; footProxy.h = f.h; footProxy.speed = 0;
+  footProxy.x = f.x; footProxy.z = f.z; footProxy.h = f.h; footProxy.speed = f.speed || 0; footProxy.vx = Math.sin(f.h) * (f.speed || 0); footProxy.vz = Math.cos(f.h) * (f.speed || 0);
 }
-
-/* ------------------------------------------------ story UI */
-function storyLoc(i) { if (i === undefined || !G.world) return null; if (typeof i === 'object') { const ps = G.world.policeStations || []; const s = ps[i.police % Math.max(1, ps.length)]; return s ? { x: s.x, z: s.z } : storyLoc(0); } const c = G.world.cities; const city = c[i % c.length]; return city ? (city.spawn ? { x: city.spawn.x, z: city.spawn.z } : { x: city.x, z: city.z }) : null; }
-function toggleStory() {
-  const S = G.story; if (!S) return;
-  if (S.active) { if (S.done) { S.active = false; S.done = false; return; } if (confirm('Quit the story?')) { S.stop(); } return; }
-  S.start(); toast(`ANDHRA UNDERWORLD - you are ${S.role()}. ${BLURB[S.role()]}`, 5000);
+/* pistol: hold SHOOT. On touch it auto-aims at the nearest hostile in front (Free Fire style). */
+function hostiles() {
+  const out = []; if (G.police.active) G.police.cars.forEach((P, i) => { if (P.hp > 0 && !P.block) out.push({ x: P.car.x, y: 1, z: P.car.z, r: 2.2, hit: d => { if (G.police.damage(i, d * 0.6)) { toast('Police unit destroyed! Wanted level up', 1800); G.police.raise(G.veh, 1); } } }); });
+  for (const o of G.law.officers) if (o.hp > 0 && (o.state === 'chase' || G.shotAtCops)) out.push({ x: o.x, y: 1, z: o.z, r: 0.7, hit: d => { if (G.law.damage(o, d)) { H.radio(G.law.radioFor('down', o)); setStars(Math.min(5, (G.police.stars || 0) + 1), 'copkill'); } else if (!G.police.active) setStars(2, 'shot cop'); } });
+  if (G.storyC) for (const g of G.storyC.gang) if (g.hp > 0) out.push({ x: g.x, y: 1, z: g.z, r: g.kind === 'boss' ? 0.9 : 0.7, hit: d => G.storyC.hitGang(g.id, d) });
+  return out;
 }
-function storyUI() {
-  const S = G.story, box = $('story'), obj = $('stObj'); if (!S || !S.active) { box.hidden = true; obj.hidden = true; return; }
-  const s = S.step, ids = S.h.ids().length, key = [S.ch, S.i, S.done, S.mine(s), ids, S.flags.trust].join('|');
-  if (G.stKey !== key) { G.stKey = key; let h = '';
-    if (s.t === 'talk') h = `<div class="stT">${CHAPTERS[S.ch].title}</div><b>${s.by}</b><p>${s.text}</p><small>tap to continue</small>`;
-    else if (s.t === 'decide') h = `<div class="stT">${CHAPTERS[S.ch].title}</div><p>${s.q}</p><div class="stB">${s.opts.filter(o => S._allowed(o)).map(o => `<button data-v="${o[0]}">${o[1]}</button>`).join('')}</div><small id="stVotes"></small>`;
-    else if (s.t === 'end') h = `<div class="stT">THE END</div><b>${s.title}</b><p>${s.text}</p><small>tap to close</small>`;
-    box.innerHTML = h; box.hidden = !h; box.dataset.t = s.t; }
-  if (s.t === 'decide') { const v = $('stVotes'); if (v) v.textContent = `Votes ${Object.keys(S.votes).length}/${ids} - majority wins (25 s)`; }
-  let t = ''; if (s.t !== 'talk' && s.t !== 'decide' && s.t !== 'end') { const who = s.who && !S.mine(s) ? `Waiting for ${s.who}: ` : `${S.role()} · `; t = who + s.text;
-    if (s.t === 'hack') t += ` [${Math.floor(100 * S.prog / s.secs)}%]`; if (s.t === 'defeat') t += ` [${S.kills}/${s.n}]`; }
-  obj.hidden = !t; obj.textContent = t;
+function footShoot(dt, I) {
+  const f = G.foot; G.gunCd = Math.max(0, (G.gunCd || 0) - dt); f.shotT = Math.max(0, f.shotT - dt); f.aiming = f.shotT > 0;
+  if (!I.shoot || G.gunCd > 0) return; G.gunCd = 0.28; G.audio.shot();
+  const cam = G.camYaw + G.orbit; let yaw = cam, pit = clamp(-G.orbitY * 0.03, -0.3, 0.4);
+  if (G.touch.enabled || G.joy) { let best = null, bs = 1e9; for (const t of hostiles()) { const dx = t.x - f.x, dz = t.z - f.z, d = Math.hypot(dx, dz), da = Math.abs(Math.atan2(Math.sin(Math.atan2(dx, dz) - cam), Math.cos(Math.atan2(dx, dz) - cam))); if (d < 40 && da < 0.9 && d + da * 20 < bs) { bs = d + da * 20; best = { yaw: Math.atan2(dx, dz), pit: Math.atan2(t.y - 1.4, d) }; } } if (best) { yaw = best.yaw; pit = best.pit; } }
+  f.h = yaw; f.shotT = 0.35; G.shotFlash = 0.06;
+  const ox = f.x, oy = f.y + 1.4, oz = f.z, dx = Math.sin(yaw) * Math.cos(pit), dy = Math.sin(pit), dz = Math.cos(yaw) * Math.cos(pit); let bestT = 120, hit = null;
+  const test = (x, y, z, r, fn) => { const rx = x - ox, ry = y - oy, rz = z - oz, t = rx * dx + ry * dy + rz * dz; if (t < 0.5 || t > bestT) return; const cx = ox + dx * t - x, cy = oy + dy * t - y, cz = oz + dz * t - z; if (cx * cx + cy * cy + cz * cz < r * r) { bestT = t; hit = fn; } };
+  for (const t of hostiles()) test(t.x, t.y + 0.4, t.z, t.r + 0.35, () => t.hit(34));
+  for (const e of G.crowd.list) if (e.state !== 'hit') test(e.x, (e.lift || 0) + 0.9, e.z, 0.7, () => { e.state = 'hit'; e.t = 0; e.vy = 3; e.hx = dx * 4; e.hz = dz * 4; e.spin = 3; if (e.kind === 'human') { toast('You shot a pedestrian! Wanted level up', 2000); setStars(Math.min(5, (G.police.stars || 0) + 1), 'murder'); } });
+  G.scene.tracer(ox + dx, oy + dy - 0.2, oz + dz, ox + dx * bestT, oy + dy * bestT, oz + dz * bestT); if (hit) hit();
+}
+function hurt(dmg, from) { if (G.dead || G.arrest) return; G.hp = Math.max(0, G.hp - dmg); $('flash').style.opacity = 0.7; setTimeout(() => { $('flash').style.opacity = 0; }, 120); if (G.hp <= 0) die(); }
+function die() {
+  G.dead = { t: 0 }; $('wasted').hidden = false; $('wastedTxt').textContent = 'WASTED'; $('wastedTxt').className = ''; $('wastedSub').textContent = 'You are taken to the nearest police station hospital wing'; G.joy && G.joy.release();
+  if (G.foot) { G.foot.anim = null; } setTimeout(() => respawnAt(null), 3500);
+}
+function respawnAt(st) {
+  const ns = st || (G.law.nearestStation(G.foot ? G.foot.x : G.veh.x, G.foot ? G.foot.z : G.veh.z) || {}).st, sp = ns ? ns.door : { x: G.veh.x, z: G.veh.z };
+  const fine = Math.min(G.money, 200); G.money -= fine; G.hp = 100; G.dead = null; G.arrest = null; $('wasted').hidden = true; setStars(0);
+  if (!G.foot) exitVehicle(true); G.foot.anim = null; G.foot.x = sp.x; G.foot.z = sp.z; G.foot.y = G.world.heightAt(sp.x, sp.z); G.camInit = false; toast(fine ? `Hospital bill Rs ${fine}` : 'Back on your feet', 2500);
+}
+function setStars(n, why) {
+  const pol = G.police, P = G.foot ? footProxy : G.veh;
+  if (n <= 0) { if (pol.active) pol.stop(); G.law.clearChase(); return; }
+  if (!pol.active) { pol.start(P, n); } else if (n > pol.stars) pol.raise(P, n - pol.stars); else pol.stars = n;
+  H.radio(G.law.radioFor(n >= 4 ? 'swat' : n >= 2 ? 'backup' : 'crime', { x: P.x, z: P.z, stars: n }));
+  G.lawT = 0;
+}
+function startArrest(why) {
+  if (G.arrest || G.dead) return; const P = G.foot || G.veh, stars = Math.max(1, G.police.stars || 1);
+  G.arrest = G.law.startArrest({ x: P.x, z: P.z, money: G.money }, stars, why); G.arrest.stage = 'busted'; G.joy && G.joy.release();
+  $('wasted').hidden = false; $('wastedTxt').textContent = 'BUSTED'; $('wastedTxt').className = 'busted'; $('wastedSub').textContent = why || 'You have been arrested'; G.police.stop(); G.law.clearChase();
+  H.radio(G.law.radioFor('arrest', { station: G.arrest.st && G.arrest.st.name }));
+}
+function arrestStep(dt) {
+  const a = G.arrest; if (!a) return; a.t += dt;
+  if (a.stage === 'busted' && a.t > 2.5) { a.stage = 'jail'; a.t = 0; G.money -= a.fine; const st = a.st; if (!G.foot) exitVehicle(true); if (st) { G.foot.anim = null; G.foot.x = st.door.x; G.foot.z = st.door.z; G.foot.y = G.world.heightAt(st.door.x, st.door.z); } G.camInit = false; $('wastedTxt').textContent = 'IN CUSTODY'; }
+  if (a.stage === 'jail') { $('wastedSub').textContent = `Questioned by the police... released in ${Math.max(0, Math.ceil(a.time - a.t))}s (fine Rs ${a.fine})`; if (a.t > a.time) { G.arrest = null; $('wasted').hidden = true; toast('Released. Stay out of trouble.', 2500); } }
 }
 function policeBump(v) {
   if (!G.police.active) return;
@@ -401,13 +450,25 @@ function policeBump(v) {
     if (d < rr && d > 0.01) {
       const nx = dx / d, nz = dz / d, rel = (v.vx - c.vx) * nx + (v.vz - c.vz) * nz, push = (rr - d) * 0.5;
       v.x += nx * push; v.z += nz * push; c.x -= nx * push; c.z -= nz * push;
-      if (rel < 0) { const j = -1.2 * rel * 0.5; v.vx += nx * j; v.vz += nz * j; c.vx -= nx * j; c.vz -= nz * j; v.impact = Math.max(v.impact || 0, -rel); if (-rel > 6 && P.hp > 0 && G.police.damage(G.police.cars.indexOf(P), -rel * 2) && G.story) G.story.kill(); }
+      if (rel < 0) { const j = -1.2 * rel * 0.5; v.vx += nx * j; v.vz += nz * j; c.vx -= nx * j; c.vz -= nz * j; v.impact = Math.max(v.impact || 0, -rel); if (-rel > 6 && P.hp > 0) G.police.damage(G.police.cars.indexOf(P), -rel * 2); }
     }
   }
 }
+function lawStep(dt, tg) {
+  const L = G.law, stars = G.police.active ? G.police.stars : 0, onFoot = !!G.foot;
+  const r = L.update(dt, { x: tg.x, z: tg.z, onFoot, speed: tg.speed || 0, moveSpeed: tg.speed || 0, hurt }, stars);
+  if (r.arrested && !G.arrest) startArrest('Arrested by officers on foot');
+  G.lawT = (G.lawT || 0) - dt;
+  if (stars > 0 && G.lawT < 0 && !G.arrest) { G.lawT = 6; const want = Math.min(6, stars + 1); if (L.chasers() < want) { if (onFoot) L.nearSpawn(tg, 2, stars >= 4); else if (stars >= 2) L.dispatch(tg, 1, stars >= 4); } H.radio(L.radioFor(onFoot ? 'onfoot' : 'spotted', { x: tg.x, z: tg.z, from: L.nearestStation(tg.x, tg.z) ? L.nearestStation(tg.x, tg.z).st : tg, veh: G.veh.spec.label })); }
+  if (stars === 0 && L.chasers() > 0 && !G.arrest) L.clearChase();
+  const hit = L.roamerHit(G.veh); if (hit && !G.police.active && L.cool.hit <= 0) { L.cool.hit = 5; toast('You hit a police vehicle!', 2200); setStars(2, 'hit cop'); }
+  if (G.heat && stars === 0 && L.roamerSees(tg) && !onFoot && G.veh.speed > 32 && L.cool.speed <= 0) { L.cool.speed = 25; toast('Police spotted you speeding', 2000); setStars(1, 'speed'); }
+  for (const e of G.lot.all()) { if (Math.abs(e.x - G.veh.x) > 14 || Math.abs(e.z - G.veh.z) > 14 || onFoot) continue; const dx = G.veh.x - e.x, dz = G.veh.z - e.z, d = Math.hypot(dx, dz), sp = SPECS[e.type], rr = (sp.len + G.veh.spec.len) * 0.28 + 0.8; if (d < rr && d > 0.01) { G.veh.x += dx / d * (rr - d) * 0.6; G.veh.z += dz / d * (rr - d) * 0.6; G.veh.vx *= 0.9; G.veh.vz *= 0.9; } }
+}
 function stepSim(dt) {
-  const v = G.veh; if (G.jail && (G.jail.t -= dt) <= 0) { G.jail = null; toast('Released. Stay out of trouble!', 2500); } const inp = (G.foot || G.jail) ? PARK : readInput(dt);
-  v.step(dt, inp); footStep(dt); const tg = G.foot ? footProxy : v; if (G.story) G.story.update(dt, tg, storyLoc);
+  const v = G.veh, inp = G.foot || G.arrest || G.dead || (G.storyC && G.storyC.cine) ? PARK : readInput(dt);
+  v.step(dt, inp); footStep(dt); arrestStep(dt); const tg = G.foot ? footProxy : v;
+  lawStep(dt, tg);
   for (const ev of G.crowd.update(dt, tg)) onHit(ev);
   { if (G.police.active) G.lastStars = G.police.stars; const res = G.police.update(dt, tg); if (res) policeResult(res); policeBump(v); }
   // soft collisions with ambient traffic
@@ -440,9 +501,10 @@ function poseOf(alpha, out) {
 }
 
 function updateCamera(dt, pose) {
-  const cam = G.scene.camera, v = G.veh, cfg = CAM[v.type], now = performance.now();
+  const cam = G.scene.camera, v = G.veh, cfg = CAM[v.type] || CAM.car, now = performance.now();
+  if (G.storyC && G.storyC.cine) return;
   G.shake *= Math.exp(-6 * dt);
-  const me = G.scene.models.get('me'); if (me) me.group.visible = G.camMode !== 2 || !!G.foot;
+  const me = G.scene.models.get('me'); if (me) me.group.visible = G.camMode !== 2;
   if (G.foot) { const f = G.foot, yaw = G.camYaw + G.orbit, d = 4.6 * G.zoom, tx = f.x - Math.sin(yaw) * d, tz = f.z - Math.cos(yaw) * d, ty = f.y + 2.2 + G.orbitY * 0.5; G.aimYaw = yaw; const k = 1 - Math.exp(-14 * dt);
     if (!G.camInit) cam.position.set(tx, ty, tz); cam.position.x += (tx - cam.position.x) * k; cam.position.y += (ty - cam.position.y) * k; cam.position.z += (tz - cam.position.z) * k;
     cam.position.y = Math.max(cam.position.y, G.world.heightAt(cam.position.x, cam.position.z) + 0.6); cam.lookAt(f.x, f.y + 1.4 - G.orbitY * 0.15, f.z); return; }
@@ -474,10 +536,11 @@ function updateRemotes() {
     const s = net.sample(r, G.tmp.rs || (G.tmp.rs = {})); if (!s) continue;
     const spec = SPECS[r.veh] || SPECS.car, hl = spec.wheelbase / 2, sn = Math.sin(s.h), cs = Math.cos(s.h);
     const fy = w.heightAt(s.x + sn * hl, s.z + cs * hl), by = w.heightAt(s.x - sn * hl, s.z - cs * hl);
+    if (s.f & FLAG.FOOT) { sc.removeModel('r' + id); r.ph = (r.ph || 0) + 0.1 * (1 + Math.abs(s.v)); const cm = G.storyC && G.storyC.cine; const rl = G.net.story && G.net.story.roles && G.net.story.roles[id], R = rl && ROLES[rl]; G.chars.set('r' + id, { x: s.x, y: w.heightAt(s.x, s.z), z: s.z, h: s.h, phase: r.ph, moving: Math.min(1.3, Math.abs(s.v) / 4.8), color: R ? R.shirt : r.color, pants: R ? R.pants : '#2c3e50', crouch: (s.f & 256) ? 0.6 : 0, gun: !!(s.f & 512), aim: !!(s.f & 512), flash: !!(s.f & FLAG.GUN), air: !!(s.f & FLAG.AIR), vis: !cm }); updateTag(id, r, s, w.heightAt(s.x, s.z) + 2.2, Math.hypot(s.x - me.x, s.z - me.z)); continue; }
+    G.chars.remove('r' + id);
     const m = sc.model('r' + id, r.veh, r.color);
     sc.placeModel(m, { x: s.x, z: s.z, y: (fy + by) / 2, h: s.h, pitch: Math.atan((fy - by) / spec.wheelbase), roll: 0, steer: s.st * spec.maxSteer, brake: s.f & FLAG.BRAKE, lights: s.f & FLAG.LIGHTS, reverse: s.f & FLAG.REVERSE, signed: s.v });
     const d = Math.hypot(s.x - me.x, s.z - me.z);
-    { const f = r.foot; if (f && f.on && performance.now() - f.t < 2500) { r.fp = r.fp || { x: f.x, z: f.z, h: f.h }; r.fp.x += (f.x - r.fp.x) * 0.3; r.fp.z += (f.z - r.fp.z) * 0.3; r.fp.h = f.h; G.scene.setFoot({ x: r.fp.x, y: w.heightAt(r.fp.x, r.fp.z) + (f.a ? 0.7 : 0), z: r.fp.z, h: r.fp.h, s: f.s || 1, phase: (performance.now() / 1000) * (f.m > 1 ? 12 : 8), moving: f.m > 1 ? 1.3 : f.m ? 0.8 : 0, air: f.a, c1: r.color }, 'r' + id); } else r.fp = null; }
     if (s.f & FLAG.HORN) { if (!r.horn) { r.horn = true; if (d < 400) G.audio.horn(r.veh, 0.18 * clamp(1 - d / 400, 0.05, 1)); } } else r.horn = false;
     updateTag(id, r, s, (fy + by) / 2 + spec.wid + 1.6, d);
   }
@@ -506,7 +569,7 @@ function updateHud(dt, info, serverSec) {
   const { city, dist } = nearestCityInfo(), nr = G.world.nearestRoad(v.x, v.z), onRoad = nr && nr.d < nr.halfW + 3 ? nr.road.ref : '';
   $('where').textContent = dist < city.R ? `${city.name}${city.te ? ' · ' + city.te : ''}` : `${(dist * 0.001).toFixed(1)} km from ${city.name}${onRoad ? ' · ' + onRoad : ''}`;
   { const wp = G.wp, box = $('wpBox'); box.hidden = !wp; if (wp) { const d = Math.hypot(wp.x - v.x, wp.z - v.z); if (d < 25) { setWaypoint(null); toast('You have arrived!', 2500); } else { $('wpDist').textContent = d > 1000 ? `${(d * 0.001).toFixed(1)} km` : `${Math.round(d)} m`; $('wpArrow').style.transform = `rotate(${-(Math.atan2(wp.x - v.x, wp.z - v.z) - v.h) * 57.2958}deg)`; } }
-    const pol = G.police.active; $('wanted').hidden = !pol; if (pol) { const c = G.police.car; $('wantedTxt').textContent = `${'★'.repeat(G.police.stars)}${'☆'.repeat(5 - G.police.stars)}  POLICE - ${G.police.units.length} unit(s) · ${G.police.lv.name}, nearest ${Math.round(Math.hypot(c.x - v.x, c.z - v.z))} m`; } }
+    const pol = G.police.active; $('wanted').hidden = !pol; if (pol) { const c = G.police.car, st = G.police.stars; $('stars').innerHTML = '★'.repeat(st) + '<span class="off">' + '★'.repeat(5 - st) + '</span>'; $('stars').classList.toggle('flash', G.police.close > 0.3); $('wantedTxt').textContent = c ? `${G.police.units.length} unit(s) · ${G.police.lv.name} · ${Math.round(Math.hypot(c.x - v.x, c.z - v.z))} m` : ''; } }
   const r = G.runner; $('jobPanel').hidden = !r; $('arrowBox').hidden = !r;
   if (r) {
     const t = r.target, d = Math.hypot(t.x - v.x, t.z - v.z), ang = Math.atan2(t.x - v.x, t.z - v.z) - v.h;
@@ -518,6 +581,9 @@ function updateHud(dt, info, serverSec) {
   if (st && v.speed < 3) { pr.hidden = false; pr.textContent = v.fuel >= v.spec.tank - 0.2 ? 'Tank full' : (G.touch.enabled ? `Hold FUEL to refuel  (${rs(FUEL_PRICE)}/L)` : `Hold F to refuel  (${rs(FUEL_PRICE)}/L)`); }
   else if (v.fuel <= 0.2) { pr.hidden = false; pr.textContent = 'Out of fuel! Press R to reset to road'; }
   else pr.hidden = true;
+  $('hpBar').style.width = G.hp + '%'; $('hpTxt').textContent = Math.round(G.hp); $('arBar').style.width = '0%'; $('weapon').textContent = G.foot ? 'PISTOL' : 'ROOF GUN';
+  { const ep = $('enterPrompt'), eb = $('enterBtn'); let n = null; if (G.foot && !G.foot.anim && !G.dead) n = G.lot.nearest(G.foot.x, G.foot.z); ep.hidden = !n; if (n) ep.textContent = `${G.touch.enabled ? 'Tap ENTER' : 'Press E'} to get into the ${SPECS[n.e.type].label}`; eb.hidden = !n || !G.touch.enabled; }
+  if (G.storyC) { G.storyC.hud(); const L = G.law.lastRadio; if (L && G.lastRadioT !== L.t) { G.lastRadioT = L.t; showRadio(L.text); } }
   if (!$('players').hidden) renderPlayers();
 }
 
@@ -533,31 +599,87 @@ function frame(now) {
   const info = G.scene.update(dt, { x: pose.x, y: pose.y, z: pose.z }, tod, serverSec);
   G.scene.updateChunks(pose.x, pose.z, 1);
   const lightsOn = G.lights === 'on' || (G.lights === 'auto' && info.night);
-  const me = G.scene.model('me', G.profile.veh === v.type ? v.type : v.type, G.profile.color);
-  G.scene.placeModel(me, { ...pose, brake: v.brakeLit, lights: lightsOn, reverse: v.reversing, ax: v.ax, ay: v.ay, signed: v.u });
+  let me = null; if (!G.foot) { me = G.scene.model('me', v.type, G.vcolor); G.scene.placeModel(me, { ...pose, brake: v.brakeLit, lights: lightsOn, reverse: v.reversing, ax: v.ax, ay: v.ay, signed: v.u }); }
   G.scene.setHeadlight(lightsOn && info.night, { x: pose.x, y: pose.y, z: pose.z, h: pose.h }, v.spec);
   G.scene.updatePeds(G.crowd.list);
-  { const live = new Set(); if (G.police.active) for (const P of G.police.cars) { const c = P.car; live.add(P.id); const pm = G.scene.model(P.id, P.swat ? 'bus' : P.bike ? 'bike' : 'car', P.swat ? '#111827' : '#1d3a8a'); G.scene.placeModel(pm, { x: c.x, z: c.z, y: c.y || 0, h: c.h, pitch: c.pitch || 0, roll: c.roll || 0, steer: c.steerAngle || 0, brake: c.brakeLit, lights: true, reverse: c.reversing, signed: c.u }); pm.group.rotation.z += P.hp <= 0 ? 0.5 : 0; }
+  { const live = new Set(); if (G.police.active) for (const P of G.police.cars) { const c = P.car; live.add(P.id); const pm = G.scene.model(P.id, P.swat ? 'bus' : 'car', P.swat ? '#111827' : '#1d3a8a'); G.scene.placeModel(pm, { x: c.x, z: c.z, y: c.y || 0, h: c.h, pitch: c.pitch || 0, roll: c.roll || 0, steer: c.steerAngle || 0, brake: c.brakeLit, lights: true, reverse: c.reversing, signed: c.u }); pm.group.rotation.z += P.hp <= 0 ? 0.5 : 0; }
     for (const k of [...G.scene.models.keys()]) if (k.startsWith('pol') && !live.has(k)) G.scene.removeModel(k);
     if (G.police.active && (G.sirenT = (G.sirenT || 0) - dt) < 0) { G.sirenT = 0.9; G.audio.chime(); } }
-  gunFrame(dt, me, pose, v); storyUI();
-  if (G.police.active) G.police.cops.forEach((c, i) => G.scene.setFoot({ x: c.x, y: G.world.heightAt(c.x, c.z), z: c.z, h: c.h, s: 1, phase: c.phase, moving: c.moving, c1: '#1d3a8a', skin: '#a9744f' }, 'c' + i));
-  { const q = G.police.say; if (q.length) { if (!G.radioT || performance.now() > G.radioT) { const line = q.shift(); G.radioT = performance.now() + 2600; radioSay(line); } if (q.length > 6) q.splice(0, q.length - 6); } }
-  { const j = $('busted'); j.hidden = !G.jail; if (G.jail) j.textContent = `BUSTED! In custody at ${G.jail.st} - ${Math.ceil(G.jail.t)} s`; }
-  if (G.foot) G.scene.setFoot({ x: G.foot.x, y: G.foot.y, z: G.foot.z, h: G.foot.h, s: G.foot.s, phase: G.foot.phase, moving: G.foot.moving, air: G.foot.lift > 0.15, c1: G.profile.color }); else G.scene.setFoot(null);
-  { const ab = $('actBtn'), fb = document.querySelector('.fire'), foot = !!G.foot; if (ab && G.lastFoot !== foot) { G.lastFoot = foot; ab.innerHTML = foot ? '🚗<br>ENTER' : '🚪<br>EXIT'; if (fb) fb.innerHTML = foot ? '⬆<br>JUMP' : '🔫<br>FIRE'; } }
-  updateRemotes(); G.scene.pruneFoots(); updateCamera(dt, pose); G.scene.render();
+  if (me && !G.dead) gunFrame(dt, me, pose, v); else G.scene.tickFx(dt);
+  renderWorldExtras(dt, pose);
+  { const ab = $('actBtn'), fb = document.querySelector('.fire'), foot = !!G.foot; if (G.lastFoot !== foot) setFootMode(foot); if (ab && G.lastFoot !== foot) { G.lastFoot = foot; ab.innerHTML = foot ? '🚗<br>ENTER' : '🚪<br>EXIT'; if (fb) fb.innerHTML = foot ? '⬆<br>JUMP' : '🔫<br>FIRE'; } }
+  updateRemotes(); updateCamera(dt, pose); G.scene.render();
   const flags = (v.brakeLit ? FLAG.BRAKE : 0) | (lightsOn ? FLAG.LIGHTS : 0) | (G.keys.KeyH ? FLAG.HORN : 0) | (v.reversing ? FLAG.REVERSE : 0);
-  if (G.net) { G.net.sendState(v, flags);
-    const tn = performance.now(); if (G.foot) { if (tn - (G.footSend || 0) > 100) { G.footSend = tn; G.net.sendFoot({ on: 1, x: G.foot.x, z: G.foot.z, h: G.foot.h, m: G.foot.moving > 1 ? 2 : G.foot.moving > 0.3 ? 1 : 0, a: G.foot.lift > 0.15, s: G.foot.s }); G.footWas = true; } } else if (G.footWas) { G.footWas = false; G.net.sendFoot({ on: 0, x: v.x, z: v.z, h: v.h }); } }
+  if (G.net) { if (G.foot) { const f = G.foot; G.net.sendState({ x: f.x, z: f.z, h: f.h, u: f.speed || 0, steerAngle: 0, spec: { maxSteer: 1 }, teleported: false }, FLAG.FOOT | (f.speed > 4.5 ? FLAG.RUN : 0) | (f.lift > 0.15 ? FLAG.AIR : 0) | (G.shotFlash > 0 ? FLAG.GUN : 0) | (f.anim ? 256 : 0) | (f.shotT > 0 ? 512 : 0)); } else G.net.sendState(v, flags); }
   G.audio.update(v.rpm, G.paused ? 0 : Math.max(0, G.keys.KeyW || G.keys.ArrowUp || G.touch.gas ? 1 : 0), v.skid * (v.speed > 3 ? 1 : 0), v.type);
   if ((G.hudT += dt) > 0.066) { G.hudT = 0; updateHud(dt, info, serverSec); }
-  if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, cx: v.x, cz: v.z, radius: G.miniR || 650, me: v, target: G.runner && G.runner.target, wp: G.wp, players: remotePins() }); if (!$('bigmap').hidden) drawBigMap(); }
+  if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); const me2 = G.foot || v; G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, theme: 'gta3', rotateH: G.foot ? G.camYaw + G.orbit : v.h, cx: me2.x, cz: me2.z, radius: G.miniR || 650, me: me2, target: G.runner && G.runner.target, wp: G.wp, players: remotePins(), blips: allBlips() }); if (!$('bigmap').hidden) drawBigMap(); }
   if ((G.saveT += dt) > 6) { G.saveT = 0; persist(); } if ((G.moneyT += dt) > 5) { G.moneyT = 0; if (G.net) G.net.sendMoney(G.earned); }
 }
 function autoQuality() {
   const order = ['high', 'medium', 'low'], cur = G.scene.qName;
   if (G.fps < 28 && cur !== 'low' && !G.paused) { const n = order[order.indexOf(cur) + 1]; G.scene.setQuality(n); $('quality').value = n; toast('Low frame rate: graphics set to ' + n, 2500); }
+}
+
+/* ------------------------------------------------ story / law glue */
+let radioTimer = 0, callTimer = 0;
+function showRadio(text) { const r = $('radio'); $('radioTxt').textContent = text; r.hidden = false; clearTimeout(radioTimer); radioTimer = setTimeout(() => { r.hidden = true; }, 6000); G.audio.chime && G.audio.chime(); }
+const H = {
+  toast: (m, ms) => toast(m, ms),
+  radio: text => { if (text) { G.law.radio(text); } },
+  call: (who, text) => { const N = NPCS[who] || ROLES[who] || { name: who, emoji: '📞' }; $('callBox').hidden = false; $('callAva').textContent = N.emoji || '📞'; $('callWho').textContent = N.name || who; $('callTxt').textContent = text; clearTimeout(callTimer); callTimer = setTimeout(() => { $('callBox').hidden = true; }, 7000); },
+  startStory: async () => { if (!G.running) { await startGame(); } G.storyC.openLobby(); },
+  stageTeam: A => {   // regroup everyone around the cutscene location
+    const roles = G.net && G.net.story ? G.net.story.roles : {}, myRole = G.storyC.myRole, i = Math.max(0, ['mastermind', 'driver', 'hacker', 'insider'].indexOf(myRole));
+    const P = G.foot || G.veh; if (Math.hypot(P.x - A.x, P.z - A.z) > 60) { if (!G.foot) exitVehicle(true); const a = i * 1.57, x = A.x + Math.cos(a) * 3, z = A.z + Math.sin(a) * 3; G.foot.anim = null; G.foot.x = x; G.foot.z = z; G.foot.y = G.world.heightAt(x, z); G.veh.x = x + 4; G.veh.z = z + 4; G.lot.dyn.forEach(e => { if (e.id === G.myPark) { e.x = x + 5; e.z = z + 5; } }); G.camInit = false; }
+    else if (!G.foot) exitVehicle(true);
+    G.scene.updateChunks(A.x, A.z, 60); G.joy && G.joy.release();
+  },
+};
+function onEv(k, d, from) { G.storyC.onEv(k, d, from); }
+G_expose();
+function G_expose() { G.setStars = setStars; G.hurt = hurt; G.lawChase = () => G.law.chasers() > 0; G.arrestBusy = () => !!(G.arrest || G.dead); }
+function allBlips(full) {
+  const out = []; for (const st of G.law.stations) out.push({ x: st.x, z: st.z, color: '#3b6fe0', r: 5, glyph: 'P', gcolor: '#fff', label: full ? st.name : '' });
+  for (const s of G.world.stations || []) if (full) out.push({ x: s.x, z: s.z, color: '#d63031', r: 3 });
+  if (G.storyC) out.push(...G.storyC.blips());
+  if (G.police.active) for (const P of G.police.cars) if (P.hp > 0 && !P.block) out.push({ x: P.car.x, z: P.car.z, color: (performance.now() / 300 | 0) % 2 ? '#e74c3c' : '#3b6fe0', r: 3.5 });
+  for (const o of G.law.officers) if (o.state === 'chase' && o.hp > 0) out.push({ x: o.x, z: o.z, color: '#6aa0ff', r: 3 });
+  return out;
+}
+let stMeshes = new Map();
+function stationMesh(st) {
+  const T = G.T, g = new T.Group(), mat = c => new T.MeshStandardMaterial({ color: c, roughness: 0.7 });
+  const body = new T.Mesh(new T.BoxGeometry(18, 5, 12.4), mat(0xe9edf2)); body.position.y = 2.5; g.add(body);
+  const band = new T.Mesh(new T.BoxGeometry(18.2, 0.9, 12.6), mat(0x1d3a8a)); band.position.y = 4.4; g.add(band);
+  const roof = new T.Mesh(new T.BoxGeometry(18.8, 0.4, 13), mat(0x2a2f3a)); roof.position.y = 5.2; g.add(roof);
+  const sign = G.scene._canvasTex(256, 96, (x, w, h) => { x.fillStyle = '#1d3a8a'; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.font = 'bold 54px system-ui'; x.textAlign = 'center'; x.fillText('POLICE', w / 2, 66); }); sign.wrapS = sign.wrapT = T.ClampToEdgeWrapping;
+  const board = new T.Mesh(new T.PlaneGeometry(7, 2.6), new T.MeshBasicMaterial({ map: sign })); board.position.set(0, 3.2, 6.25); g.add(board);
+  const door = new T.Mesh(new T.BoxGeometry(2.2, 3, 0.2), mat(0x35527a)); door.position.set(0, 1.5, 6.25); g.add(door);
+  const l1 = new T.Mesh(new T.BoxGeometry(0.8, 0.5, 0.5), new T.MeshBasicMaterial({ color: 0xff2020 })), l2 = new T.Mesh(new T.BoxGeometry(0.8, 0.5, 0.5), new T.MeshBasicMaterial({ color: 0x2040ff })); l1.position.set(-0.5, 5.6, 0); l2.position.set(0.5, 5.6, 0); g.add(l1, l2);
+  g.position.set(st.x, G.world.heightAt(st.x, st.z), st.z); g.rotation.y = st.th; G.scene.scene.add(g); return { g, l1, l2 };
+}
+function renderWorldExtras(dt, pose) {
+  const sc = G.scene, C = G.chars, S = G.storyC, cine = S && S.cine, w = G.world; const fx = G.foot ? G.foot.x : pose.x, fz = G.foot ? G.foot.z : pose.z, t = performance.now() / 1000;
+  S.update(dt);
+  G.lot.render(sc, fx, fz);
+  // stations
+  for (const st of G.law.stations) { const near = Math.hypot(st.x - fx, st.z - fz) < 450, o = stMeshes.get(st.id); if (near && !o) stMeshes.set(st.id, stationMesh(st)); else if (!near && o) { sc.scene.remove(o.g); stMeshes.delete(st.id); } else if (o) { const on = (t * 3 | 0) % 2; o.l1.visible = !!on; o.l2.visible = !on; } }
+  // local character
+  if (G.foot) { const f = G.foot, role = S.myRole && ROLES[S.myRole]; C.set('me', { x: f.x, y: f.y, z: f.z, h: f.h, s: f.s, phase: f.phase, moving: f.moving, air: f.lift > 0.15, crouch: f.crouch, color: role ? role.shirt : G.profile.color, pants: role ? role.pants : '#2c3e50', gun: f.shotT > 0 || !!G.dead, aim: f.shotT > 0, flash: G.shotFlash > 0, dead: G.dead ? Math.min(1, G.dead.t = (G.dead.t || 0) + dt * 2) : 0, vis: !cine }); } else C.remove('me');
+  G.shotFlash = Math.max(0, (G.shotFlash || 0) - dt);
+  // officers + roaming patrols
+  for (const o of G.law.officers) { if (Math.hypot(o.x - fx, o.z - fz) > 260) { C.remove('cop' + o.id); continue; } C.set('cop' + o.id, { x: o.x, y: w.heightAt(o.x, o.z), z: o.z, h: o.h, phase: o.phase, moving: o.moving, color: o.swat ? '#15171c' : '#2c4a8c', pants: o.swat ? '#15171c' : '#1b2a52', hat: o.swat ? 'helmet' : 'cap', gun: o.state === 'chase', aim: o.state === 'chase' && o.firing > 0, flash: o.firing > 0.05, dead: o.hp <= 0 ? 1 : 0, s: o.swat ? 1.1 : 1 }); }
+  C.sweep('cop');
+  const live = new Set(); for (const r of G.law.roamers) { const key = 'lw' + r.id; live.add(key); const m = sc.model(key, r.type, r.type === 'bike' ? '#1d3a8a' : '#1d3a8a'); sc.placeModel(m, { x: r.x, z: r.z, y: r.y, h: r.h, pitch: 0, roll: 0, steer: 0, lights: true, signed: r.u }); }
+  for (const k of [...sc.models.keys()]) if (k.startsWith('lw') && !live.has(k)) sc.removeModel(k);
+  // gang members
+  if (S.gang.length) { for (const g of S.gang) { const L = S.look(g); C.set('g' + g.id, { x: g.x, y: w.heightAt(g.x, g.z), z: g.z, h: g.h, phase: g.phase, moving: g.mv, color: L.color, pants: L.pants, hat: L.hat, gun: true, aim: g.fire > 0, dead: g.hp <= 0 ? 1 : 0, s: g.kind === 'boss' ? 1.25 : 1 }); g.fire = Math.max(0, (g.fire || 0) - dt); } }
+  C.sweep('g'); 
+  // cutscene actors
+  if (cine && S.cine.shotActors) { const sh = S.cine.shotActors, A = S.cine.A; (sh.actors || []).forEach(a => { const R = ROLES[a.id] || NPCS[a.id]; if (!R) return; const x = A.x + a.at[0], z = A.z + a.at[1]; C.set('cs_' + a.id, { x, y: w.heightAt(x, z), z, h: Math.atan2(-a.at[0] + (Math.random() * 0), -a.at[1]) + 0, color: R.shirt, pants: R.pants, hat: R.hat, s: R.s || 1, phase: t * 2, moving: 0 }); }); (sh.props || []).forEach((p, i) => { const m = sc.model('csp' + i, 'car', p.color); sc.placeModel(m, { x: A.x + p.at[0], z: A.z + p.at[1], y: w.heightAt(A.x + p.at[0], A.z + p.at[1]), h: p.h, pitch: 0, roll: 0, steer: 0, lights: !!p.bar }); }); }
+  C.sweep('cs_'); if (!cine) for (const k of [...sc.models.keys()]) if (k.startsWith('csp')) sc.removeModel(k);
+  C.tick(dt);
 }
 
 boot();

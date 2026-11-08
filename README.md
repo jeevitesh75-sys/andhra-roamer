@@ -36,14 +36,10 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - On foot: E (or EXIT/ENTER button) leaves the vehicle to a safe spot (not in walls/water/other vehicles); WASD walk, Shift run, Space/JUMP jump, drag to look; E near your vehicle to get back in. Vehicle stays parked; other players see the parked vehicle (their view of your character is not synced yet).
 - Police by stars: 1 patrol (slower than you), 2 two faster cars, 3 + roadblocks ahead of you, 4 + SWAT van, 5 five units, fastest, 2 SWAT. Wrecked units are replaced, destroying one adds a star, escape distance grows with stars, fine = Rs 500 x stars.
 
-## Drop 3 - Story: ANDHRA UNDERWORLD - THE FOUR
-Press O (or the STORY button) to start. 6 chapters, roles assigned by join order (Mastermind, Driver, Hacker, Inside Man; solo plays all). Tap the cutscene box to continue; decisions are voted by the room (majority, 25 s timeout). Missions: go to place, hack (stay near), escape police, defeat units. Endings: Good / Bad / Secret (secret needs "Trust the Inside Man" in Chapter 4). Progress and votes are relayed by the server ('st' messages) - redeploy the Render server for multiplayer story sync.
-
-## Drop 4
-- Real police stations (OSM amenity=police, 15-21 per region) with a POLICE sign + red beacon, shown on the map (blue P); units are dispatched from them.
-- Police motorcycles (1 from 2 stars, 2 from 4 stars), walking officers that chase on foot (1-4 by stars), SWAT vans, roadblocks.
-- Police radio lines (top of screen + beep), arrest = taken to the nearest station for 7 s plus a fine.
-- Story investigation mission: Chapter 3 hack at a police station.
-- On-foot characters are synced to other players (server 'foot' message); parked vehicles are visible to others.
-- Voice chat: press B or the VOICE button (WebRTC; needs HTTPS + microphone permission; signalling via server 'rtc'). Untested with real devices.
-- Redeploy the Render server (server/server.js changed). Region data (client/data/*) was regenerated with police stations.
+## v3 - Exit/enter vehicles, joystick, GTA III map, police system, 4-player story
+- **On foot**: E (or the ENTER button) gets you out/in. Phones get a floating **joystick** (left thumb, push fully to sprint), drag the right side to look, FIRE (auto-aim) and JUMP buttons - Free Fire / BGMI style. You can enter any parked car/bike/bus/lorry (static ones in every city + vehicles other players left). Other players see you exit, walk and enter. Exit spots avoid walls, water and other vehicles.
+- **GTA III radar & map**: rotating circular radar with black ring and N, olive/slate palette, buildings, blips (blue P = police station, yellow ! = objective, red = enemies), health bar, green Rs counter, wanted stars. Same style on the full map (M).
+- **Police**: stations on the map (real 3D, solid walls), roaming patrol cars + motorcycles, officers that stand/walk/investigate and chase on foot, wanted stars 1-5, shooting at 3+ stars, arrest -> custody -> release, police radio text. Existing chase (roadblocks, SWAT) kept.
+- **Story mode** (menu button or T): ANDHRA UNDERWORLD - THE FOUR. 4 characters (Mastermind, Driver, Hacker, Inside Man), 6 chapters, cutscenes, role-specific missions, hacking mini-game, gang fights with a boss, votes that change the story, 3 endings (good / bad / secret). Empty roles are played by AI teammates; works offline too.
+- Server additions: shared parked-vehicle pool, story engine (`server/story.js`), event relay. Tests: `node tests/story-sync-test.mjs`, `node tests/v3-smoke.mjs`.
+- NOT included: voice chat, per-unit police sync to other players (each player runs their own chase; shared wanted not synced), real 3D visuals not verified in my sandbox (no three.js download).

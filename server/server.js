@@ -12,6 +12,10 @@
  *    {t:'m', m}                              my money (for the leaderboard)
  *    {t:'tp'}                                I teleported / respawned (skip speed check once)
  *    {t:'ping', ts}
+ *    {t:'exit', x,z,h, veh, color}           I got out of my vehicle (it becomes a shared parked vehicle)
+ *    {t:'enter', id, v?}                     I want to get into parked vehicle id (static world cars 's..' send v={type,color,x,z,h})
+ *    {t:'role', role} {t:'sstart', ch?} {t:'sdone', id} {t:'sready', id} {t:'svote', id, val} {t:'sstop'} {t:'sskip'}   story mode
+ *    {t:'ev', k, to?, d}                     generic relay (npc snapshots, hits, damage, police ghosts, wanted level, radio...)
  *  server -> client
  *    {t:'welcome', id, room, time, players:[...]}
  *    {t:'join', p:{...}} {t:'leave', id} {t:'veh', id, veh, color}
@@ -19,9 +23,12 @@
  *    {t:'roster', p:[[id,money],...]}
  *    {t:'chat', id, name, text}
  *    {t:'pong', ts} {t:'error', msg}
+ *    {t:'pk+', v:{id,type,color,x,z,h}, by} {t:'pk-', id, by} {t:'enter', ok, id, v}     shared parked vehicles
+ *    {t:'story', s:{...}} {t:'host', id} {t:'ev', from, k, d}
  */
 const http = require('http');
 const crypto = require('crypto');
+const { Story } = require('./story');
 
 const PORT = Number(process.env.PORT) || 8080;
 const TICK_HZ = 15;
@@ -29,7 +36,10 @@ const ROOM_CAP = Number(process.env.ROOM_CAP) || 24;
 const MAX_FRAME = 4096;
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-const VEHICLES = ['car', 'bus', 'lorry'];
+const VEHICLES = ['car', 'bus', 'lorry', 'bike'];
+const PARK_CAP = 80;
+const RELAY_KINDS = new Set(['npc', 'hit', 'dmg', 'pol', 'wl', 'fx', 'rad', 'tpteam', 'jail', 'boss', 'shot']);
+const MAX_RELAY = 3000;
 const WORLD_MIN = -2000, WORLD_MAX = 130000;
 const MAX_SPEED_UNITS = 260; // u/s; anything faster than this between updates is rejected as a teleport
 
@@ -147,6 +157,8 @@ function broadcast(room, obj, exceptId) {
   for (const p of room.players.values()) if (p.id !== exceptId) p.conn.send(s);
 }
 const info = p => ({ id: p.id, name: p.name, veh: p.veh, color: p.color, money: p.money, x: p.x, z: p.z, h: p.h, v: p.v, st: p.st, f: p.f });
+const pkInfo = v => ({ id: v.id, type: v.type, color: v.color, x: v.x, z: v.z, h: v.h });
+function checkHost(room) { const id = room.story.hostId(); if (id !== room.hostId) { room.hostId = id; broadcast(room, { t: 'host', id }); } }
 
 function pickRoom(requested) {
   if (!requested || requested === 'public') {
@@ -162,7 +174,8 @@ function pickRoom(requested) {
   return r.players.size < ROOM_CAP ? r : null;
 }
 function makeRoom(name) {
-  const r = { name, players: new Map(), dirty: false };
+  const r = { name, players: new Map(), dirty: false, parked: new Map(), taken: new Set(), hostId: 0, nextVid: 1 };
+  r.story = new Story(r, obj => broadcast(r, obj));
   rooms.set(name, r);
   return r;
 }
@@ -173,8 +186,8 @@ function handle(p, raw) {
   if (!m || typeof m !== 'object') return;
   const now = Date.now();
 
-  // token bucket: 60 msgs/sec burst 120 is far above the 15Hz client rate
-  p.tokens = Math.min(120, p.tokens + (now - p.tokenAt) * 0.06);
+  // token bucket: 150 msgs/sec, burst 300 (15 Hz state + 10 Hz npc/police relays stay far below it)
+  p.tokens = Math.min(300, p.tokens + (now - p.tokenAt) * 0.15);
   p.tokenAt = now;
   if (p.tokens < 1) return;
   p.tokens -= 1;
@@ -194,8 +207,10 @@ function handle(p, raw) {
       p.conn.send(JSON.stringify({
         t: 'welcome', id: p.id, room: room.name, time: now,
         players: [...room.players.values()].filter(q => q !== p).map(info),
+        parked: [...room.parked.values()].map(pkInfo), taken: [...room.taken], host: room.story.hostId(), story: room.story.pub(),
       }));
       broadcast(room, { t: 'join', p: info(p) }, p.id);
+      room.story.join(p); checkHost(room);
       break;
     }
     case 's': {
@@ -210,7 +225,7 @@ function handle(p, raw) {
       p.tp = false; p.hasState = true; p.lastState = now;
       p.x = x; p.z = z;
       p.h = num(m.h, -100, 100); p.v = num(m.v, -150, 150);
-      p.st = num(m.st, -1, 1); p.f = num(m.f, 0, 255) | 0;
+      p.st = num(m.st, -1, 1); p.f = num(m.f, 0, 1023) | 0;
       room.dirty = true;
       break;
     }
@@ -231,20 +246,46 @@ function handle(p, raw) {
       if (text) broadcast(p.room, { t: 'chat', id: p.id, name: p.name, text });
       break;
     }
-    case 'foot': {   // on-foot character state (the parked vehicle keeps being sent by 's')
-      if (!p.room) return; if (now - (p.footAt || 0) < 60) return; p.footAt = now;
-      broadcast(p.room, { t: 'foot', id: p.id, on: m.on ? 1 : 0, x: num(m.x, WORLD_MIN, WORLD_MAX), z: num(m.z, WORLD_MIN, WORLD_MAX), h: num(m.h, -100, 100), m: num(m.m, 0, 2), a: m.a ? 1 : 0, s: num(m.s, 0, 1.5) }, p.id);
+    case 'exit': {
+      const room = p.room; if (!room) return;
+      const x = num(m.x, WORLD_MIN, WORLD_MAX, NaN), z = num(m.z, WORLD_MIN, WORLD_MAX, NaN); if (Number.isNaN(x) || Number.isNaN(z)) return;
+      const type = VEHICLES.includes(m.veh) ? m.veh : p.veh;
+      const v = { id: 'v' + room.nextVid++, type, color: cleanColor(m.color), x, z, h: num(m.h, -100, 100), by: p.id };
+      room.parked.set(v.id, v);
+      while (room.parked.size > PARK_CAP) { const old = room.parked.keys().next().value; room.parked.delete(old); broadcast(room, { t: 'pk-', id: old, by: 0 }); }
+      p.foot = true; p.veh = type; p.tp = true;
+      broadcast(room, { t: 'pk+', v: pkInfo(v), by: p.id });
       break;
     }
-    case 'rtc': {   // WebRTC signalling for voice chat: forwarded to one player in the same room
-      if (!p.room) return; const to = p.room.players.get(num(m.to, 0, 1e9, -1)); const d = JSON.stringify(m.d || null); if (!to || d.length > 6000) return;
-      if (now - (p.rtcAt || 0) < 4) return; p.rtcAt = now; to.conn.send(JSON.stringify({ t: 'rtc', from: p.id, d: m.d })); break;
+    case 'enter': {
+      const room = p.room; if (!room) return;
+      const id = cleanText(m.id, 12);
+      let v = room.parked.get(id), statik = false;
+      if (!v && /^s\d+$/.test(id) && !room.taken.has(id) && m.v && typeof m.v === 'object') {   // a static world car: the client describes it, the server only stops two players taking it
+        v = { id, type: VEHICLES.includes(m.v.type) ? m.v.type : 'car', color: cleanColor(m.v.color), x: num(m.v.x, WORLD_MIN, WORLD_MAX), z: num(m.v.z, WORLD_MIN, WORLD_MAX), h: num(m.v.h, -100, 100) }; statik = true;
+      }
+      if (!v || Math.hypot(v.x - p.x, v.z - p.z) > 30) { p.conn.send(JSON.stringify({ t: 'enter', ok: false, id })); return; }
+      if (statik) room.taken.add(id); else room.parked.delete(id);
+      p.foot = false; p.veh = v.type; p.color = v.color; p.tp = true;
+      p.conn.send(JSON.stringify({ t: 'enter', ok: true, id, v: pkInfo(v) }));
+      broadcast(room, { t: 'pk-', id, by: p.id }, p.id);
+      broadcast(room, { t: 'veh', id: p.id, veh: p.veh, color: p.color }, p.id);
+      break;
     }
-    case 'st': {   // story relay: forwarded to the room with a sanitised payload
-      if (!p.room) return; if (now - (p.stAt || 0) < 150) return; p.stAt = now;
-      const d = { t: 'st', id: p.id, k: String(m.k || '').slice(0, 8) }; if (!['start', 'adv', 'vote', 'res', 'flag'].includes(d.k)) return;
-      d.ch = num(m.ch, 0, 20); d.i = num(m.i, 0, 50); if (m.v !== undefined) d.v = String(m.v).slice(0, 16); if (m.key !== undefined) d.key = String(m.key).slice(0, 16);
-      broadcast(p.room, d); break;
+    case 'role': { const room = p.room; if (!room) return; const e = room.story.setRole(p, m.role); if (e) p.conn.send(JSON.stringify({ t: 'error', msg: e })); break; }
+    case 'sstart': { const room = p.room; if (!room) return; const e = room.story.start(p, m.ch); if (e) p.conn.send(JSON.stringify({ t: 'error', msg: e })); break; }
+    case 'sstop': { const room = p.room; if (room && p.id === room.story.hostId()) room.story.stop(); break; }
+    case 'sskip': { const room = p.room; if (room) room.story.skip(p); break; }
+    case 'sdone': { const room = p.room; if (room) room.story.markDone(p, cleanText(m.id, 24)); break; }
+    case 'sready': { const room = p.room; if (room) room.story.markReady(p, cleanText(m.id, 24)); break; }
+    case 'svote': { const room = p.room; if (room) room.story.vote(p, cleanText(m.id, 24), cleanText(m.val, 12)); break; }
+    case 'ev': {
+      const room = p.room; if (!room || !RELAY_KINDS.has(m.k)) return;
+      const out = JSON.stringify({ t: 'ev', from: p.id, k: m.k, d: m.d });
+      if (out.length > MAX_RELAY) return;
+      const to = Number(m.to);
+      if (to) { const q = room.players.get(to); if (q) q.conn.send(out); } else broadcast(room, JSON.parse(out), p.id);
+      break;
     }
     case 'm': p.money = Math.floor(num(m.m, 0, 1e9)); break;
     case 'ping': p.conn.send(JSON.stringify({ t: 'pong', ts: num(m.ts, 0, 1e15) })); break;
@@ -256,7 +297,7 @@ function onConnection(conn) {
   const p = {
     id: nextId++, conn, room: null, name: '', veh: 'car', color: '#d9482b', money: 0,
     x: 0, z: 0, h: 0, v: 0, st: 0, f: 0, hasState: false, tp: true, lastState: Date.now(),
-    chatAt: 0, tokens: 120, tokenAt: Date.now(),
+    chatAt: 0, tokens: 300, tokenAt: Date.now(),
   };
   conn.onmessage = raw => handle(p, raw);
   conn.onclose = () => {
@@ -264,7 +305,8 @@ function onConnection(conn) {
     if (!room) return;
     room.players.delete(p.id);
     broadcast(room, { t: 'leave', id: p.id });
-    if (room.players.size === 0) rooms.delete(room.name);
+    room.story.leave(p); checkHost(room);
+    if (room.players.size === 0) { if (room.story.timer) clearTimeout(room.story.timer); rooms.delete(room.name); }
     p.room = null;
   };
   // a socket that never joins is dropped after 15s

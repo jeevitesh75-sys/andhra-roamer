@@ -80,14 +80,80 @@ canvas#bigcanvas{touch-action:none;cursor:grab}#minimap{pointer-events:auto;curs
 .fire{background:rgba(179,38,30,.75)!important;color:#fff;font-weight:700}
 #game{touch-action:none}
 
-#story{position:absolute;left:50%;transform:translateX(-50%);bottom:96px;width:min(640px,64vw);background:rgba(10,14,24,.88);border:1px solid rgba(255,200,80,.5);border-radius:14px;padding:10px 14px;color:#fff;pointer-events:auto;z-index:20}
-#story b{color:#ffcc55}#story p{margin:4px 0;font-size:15px;line-height:1.35}#story small{opacity:.65}.stT{font-size:11px;letter-spacing:2px;color:#e74c3c;font-weight:800}
-.stB{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.stB button{flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e67e22;color:#fff;font-weight:700;border:0;font-size:14px}
-#stObj{position:absolute;left:50%;transform:translateX(-50%);top:98px;max-width:60vw;background:rgba(10,14,24,.75);color:#ffe29a;border-radius:10px;padding:5px 12px;font-size:13px;text-align:center;z-index:15}
-.is-touch #story{bottom:84px;width:58vw;padding:7px 10px}.is-touch #story p{font-size:13px}.is-touch #stObj{top:84px;font-size:12px}
-[hidden]{display:none!important}
+/* =====================================================================
+   v3: GTA III style HUD, on-foot joystick, story mode UI
+   ===================================================================== */
+button.big.story{background:linear-gradient(180deg,#d63031,#8e1b1b);color:#fff;margin-top:10px;font-size:15px;line-height:1.15}
+button.big.story small{display:block;font-weight:500;letter-spacing:.02em;font-size:11px;opacity:.85;margin-top:3px}
+label.inl{display:flex;align-items:center;gap:8px;margin:0;text-transform:none}label.inl select{width:auto;margin:0}
 
-#radio{position:absolute;left:50%;transform:translateX(-50%);top:78px;background:rgba(15,23,42,.9);border:1px solid #38bdf8;color:#bae6fd;border-radius:8px;padding:4px 12px;font:600 13px ui-monospace,monospace;z-index:16;max-width:70vw;text-align:center}
-.is-touch #radio{top:72px;font-size:11px}
-#busted{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);background:rgba(120,0,0,.85);color:#fff;font:800 24px system-ui;padding:14px 26px;border-radius:12px;z-index:30;text-align:center}
-.is-touch #stObj{top:100px}
+/* --- GTA III radar: black ring, rotating map, N on the ring, health + armour bars beside it --- */
+#radar{position:absolute;left:14px;bottom:14px;width:176px;height:176px;border-radius:50%;background:#000;padding:5px;box-shadow:0 0 0 2px rgba(255,255,255,.55),0 8px 26px rgba(0,0,0,.6);pointer-events:auto}
+#radar #minimap{position:static;width:100%;height:100%;border:0;border-radius:50%;box-shadow:none;display:block;cursor:zoom-in}
+#radarN{position:absolute;left:50%;top:-1px;transform:translateX(-50%);font:800 12px/1 Impact,system-ui;color:#fff;background:#000;padding:1px 5px;border-radius:8px;display:none}
+#vitals{position:absolute;left:198px;bottom:20px;display:flex;flex-direction:column;gap:5px;width:122px}
+.vbar{position:relative;height:13px;background:rgba(0,0,0,.72);border:2px solid #000;border-radius:3px;overflow:hidden}
+.vbar i{position:absolute;inset:0 auto 0 0;width:100%;transition:width .15s}.vbar.hp i{background:linear-gradient(180deg,#ff5d5d,#b01616)}.vbar.ar i{background:linear-gradient(180deg,#cfd8e4,#7d8da1)}
+.vbar b{position:absolute;right:4px;top:-2px;font:800 11px/17px Impact,system-ui;color:#fff;text-shadow:0 0 3px #000}
+#weapon{font:800 11px Impact,system-ui;letter-spacing:.12em;color:#f3e9c6;text-shadow:0 1px 3px #000}
+#moneyBox{background:none;border:0;padding:0;top:12px;right:14px}
+#money{font:italic 900 34px/1 Impact,"Arial Black",system-ui;color:#8fe35a;text-shadow:-2px -2px 0 #0b2a0b,2px -2px 0 #0b2a0b,-2px 2px 0 #0b2a0b,2px 2px 0 #0b2a0b,0 4px 8px rgba(0,0,0,.5);letter-spacing:.03em}
+#rank{font:700 11px system-ui;color:#ffe08a;text-shadow:0 1px 3px #000}
+#wanted{top:62px;left:auto;right:14px;transform:none;background:none;border:0;animation:none;text-align:right;padding:0}
+#stars{font:900 26px/1 system-ui;letter-spacing:.06em;color:#f6c744;text-shadow:-1.5px -1.5px 0 #000,1.5px -1.5px 0 #000,-1.5px 1.5px 0 #000,1.5px 1.5px 0 #000}
+#stars .off{color:rgba(0,0,0,.45);text-shadow:none;-webkit-text-stroke:1px #000}#stars.flash{animation:blink .45s infinite}
+#wantedTxt{font:700 11px system-ui;color:#fff;text-shadow:0 1px 3px #000;margin-top:2px}
+#radio{position:fixed;left:50%;bottom:78px;transform:translateX(-50%);background:rgba(8,14,30,.86);border:1px solid #3b6fe0;border-radius:8px;padding:6px 12px;font-size:12px;max-width:min(560px,86vw);z-index:6;pointer-events:none;color:#cfe0ff}
+#radio b{color:#6aa0ff;margin-right:8px;font-size:10px;letter-spacing:.14em}
+#clock{color:#e8e1c8}
+
+/* --- joystick + on-foot buttons (Free Fire / BGMI style) --- */
+#joyZone{position:fixed;left:0;bottom:0;width:46vw;height:70vh;z-index:7;touch-action:none;pointer-events:auto}
+#joyBase{position:fixed;width:140px;height:140px;margin:-70px 0 0 -70px;border-radius:50%;border:3px solid rgba(255,255,255,.45);background:rgba(255,255,255,.1);z-index:8;pointer-events:none;box-shadow:0 0 18px rgba(0,0,0,.35)}
+#joyBase.idle{opacity:.5}
+#joyKnob{position:absolute;left:50%;top:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.85),rgba(255,255,255,.35));border:2px solid rgba(255,255,255,.8);box-shadow:0 3px 10px rgba(0,0,0,.4)}
+#footBtns{position:fixed;inset:0;pointer-events:none;z-index:8}
+#footBtns button{position:absolute;pointer-events:auto;border-radius:50%;border:3px solid rgba(255,255,255,.7);font-weight:800;color:#fff;padding:0;line-height:1.1}
+#footBtns .shoot{right:26px;bottom:34px;width:104px;height:104px;font-size:40px;background:rgba(214,48,49,.6)}
+#footBtns .jump{right:142px;bottom:26px;width:72px;height:72px;font-size:12px;background:rgba(52,152,219,.5)}
+#footBtns .enter{right:36px;bottom:150px;width:76px;height:76px;font-size:12px;background:rgba(46,204,113,.58);animation:pulseBtn 1s infinite alternate}
+@keyframes pulseBtn{from{transform:scale(1)}to{transform:scale(1.1)}}
+#enterPrompt{position:fixed;left:50%;bottom:30%;transform:translateX(-50%);background:rgba(8,18,30,.88);border:1px solid #2ecc71;border-radius:12px;padding:7px 16px;font-weight:700;z-index:7;pointer-events:none}
+.is-foot #dash,.is-foot #touch .tl,.is-foot #touch .tr,.is-foot #touch .ta{display:none!important}
+.is-foot #touch .tm{top:74px}
+.is-drive #footBtns,.is-drive #joyZone,.is-drive #joyBase{display:none!important}
+.is-touch #radar{left:10px;top:60px;bottom:auto;width:116px;height:116px;padding:3px}
+.is-touch #vitals{left:134px;top:64px;bottom:auto;width:96px}
+.is-touch #moneyBox{top:6px;right:10px}.is-touch #money{font-size:26px}.is-touch #wanted{top:44px;right:10px}.is-touch #stars{font-size:20px}
+.is-touch #jobPanel{left:134px;top:112px}
+.is-touch #chatlog{display:none}
+.is-touch #radio{bottom:auto;top:46px;font-size:11px}
+
+/* --- cinematic cutscene --- */
+#cine{position:fixed;inset:0;z-index:30;pointer-events:none}
+#cine .bar{position:absolute;left:0;right:0;height:13vh;background:#000;transition:transform .8s}#cine .bar.top{top:0;transform:translateY(-100%)}#cine .bar.bottom{bottom:0;transform:translateY(100%)}
+#cine.on .bar{transform:none}
+#cineTitle{position:absolute;left:0;right:0;top:19vh;text-align:center;font:italic 900 clamp(26px,6vw,64px)/1 Impact,"Arial Black",system-ui;color:#fff;letter-spacing:.08em;text-shadow:0 4px 24px #000;opacity:0;transition:opacity 1s}
+#cineTitle small{display:block;font:600 clamp(12px,2vw,20px) system-ui;letter-spacing:.4em;color:#f6c744;margin-bottom:10px}
+#cineTitle.on{opacity:1}
+#cineSub{position:absolute;left:50%;bottom:calc(13vh + 12px);transform:translateX(-50%);width:min(820px,92vw);text-align:center;text-shadow:0 2px 6px #000}
+#cineWho{font:800 14px system-ui;letter-spacing:.2em;text-transform:uppercase;margin-bottom:4px}#cineText{font:600 clamp(15px,2.4vw,22px)/1.35 system-ui;color:#fff}
+#cineFoot{position:absolute;right:14px;bottom:calc(13vh + 12px);display:flex;gap:10px;align-items:center;pointer-events:auto;font-size:12px;color:#ddd;transform:translateY(calc(-100% - 8px))}
+#cineFoot{bottom:3vh;transform:none}
+#cineSkip{background:rgba(255,255,255,.12)}
+#callBox{position:fixed;left:50%;top:64px;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:rgba(10,16,26,.9);border:1px solid #f6c744;border-radius:12px;padding:8px 14px;z-index:9;max-width:min(520px,92vw);pointer-events:none}
+#callAva{font-size:30px}#callWho{color:#f6c744;font-size:12px;letter-spacing:.1em;text-transform:uppercase}#callTxt{font-size:14px}
+#objective{position:fixed;left:14px;top:76px;width:270px;background:rgba(10,16,26,.82);border:1px solid #d63031;border-left-width:5px;border-radius:10px;padding:9px 12px;z-index:6;pointer-events:none}
+#objChap{font:800 10px system-ui;letter-spacing:.2em;color:#ff7a7a}#objTitle{font-weight:800;margin:2px 0}#objText{color:#cfd8e4;font-size:13px}#objTeam{margin-top:6px;font-size:11px;color:#9fb0c4}
+#objective .done{color:#7dffb0}
+.is-touch #objective{top:6px;left:50%;transform:translateX(-50%);width:min(330px,44vw);padding:5px 9px}.is-touch #objText{font-size:11px}.is-touch #objTitle{font-size:12px;margin:0}.is-touch #objTeam{display:none}
+#wasted{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(0,0,0,.2),rgba(0,0,0,.8));pointer-events:none}
+#wastedTxt{font:italic 900 clamp(60px,14vw,170px)/1 Impact,"Arial Black",system-ui;color:#c0392b;text-shadow:0 6px 30px #000;letter-spacing:.06em}#wastedTxt.busted{color:#4a7bd6}#wastedSub{color:#fff;font-size:16px;margin-top:8px;text-shadow:0 2px 8px #000}
+#choice,#hack,#lobby,#storyEnd{z-index:35}
+#choiceBtns{display:grid;gap:10px;margin-top:12px}#choiceBtns button{text-align:left;padding:12px 14px;font-weight:700}#choiceBtns button small{display:block;color:var(--mut);font-weight:500;margin-top:2px}
+#choiceBtns button.sel{border-color:#f6c744;background:rgba(246,199,68,.18)}
+#hackGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}#hackGrid button{height:64px;font:800 22px system-ui;letter-spacing:.05em}#hackGrid button.lit{background:#2ecc71;color:#05210f}#hackGrid button.bad{background:#e74c3c}
+#roleGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:12px}
+.roleCard{border:1px solid var(--line);border-radius:14px;padding:12px;text-align:left;background:rgba(255,255,255,.05);display:block;width:100%}.roleCard b{display:block;font-size:16px}.roleCard small{display:block;color:var(--mut);margin-top:3px}
+.roleCard .who{margin-top:8px;font-weight:700;color:#7dffb0}.roleCard.taken .who{color:#ffd166}.roleCard.mine{border-color:#f6c744;box-shadow:0 0 0 1px #f6c744 inset}.roleCard .em{font-size:30px}
+@media (max-height:520px){#cineSub{bottom:calc(13vh + 4px)}#cineText{font-size:14px}}

@@ -11,6 +11,8 @@ export const SPECS = {
     maxSteer: 0.66, steerSpeed: 26, tank: 45, fuelPerM: 0.00015, rate: 14, jobLabel: 'Taxi fares' },
   bus: { label: 'Bus', len: 11.4, wid: 2.55, wheelbase: 6.1, track: 2.0, maxSpeed: 27, accel: 2.7, brake: 6.2, reverseMax: 6,
     maxSteer: 0.55, steerSpeed: 19, tank: 200, fuelPerM: 0.0005, rate: 38, jobLabel: 'Passenger routes' },
+  bike: { label: 'Motorcycle', len: 2.1, wid: 0.8, wheelbase: 1.38, track: 0.5, maxSpeed: 52, accel: 8.2, brake: 11, reverseMax: 4,
+    maxSteer: 0.72, steerSpeed: 32, tank: 14, fuelPerM: 0.00005, rate: 9, jobLabel: 'Courier runs' },
   lorry: { label: 'Lorry', len: 9.2, wid: 2.5, wheelbase: 5.2, track: 1.9, maxSpeed: 24, accel: 2.1, brake: 5.6, reverseMax: 6,
     maxSteer: 0.56, steerSpeed: 19, tank: 300, fuelPerM: 0.00065, rate: 55, jobLabel: 'Cargo deliveries' },
 };

@@ -4,7 +4,7 @@ const SEND_MS = 66;
 export class Net {
   constructor(handlers = {}) {
     this.h = handlers; this.ws = null; this.status = 'offline'; this.id = 0; this.room = ''; this.profile = null;
-    this.remotes = new Map(); this.offset = 0; this.rtt = 0; this.lastSend = 0; this.tries = 0; this.wanted = false; this.timer = null;
+    this.remotes = new Map(); this.parked = new Map(); this.taken = new Set(); this.story = null; this.hostId = 0; this.offset = 0; this.rtt = 0; this.lastSend = 0; this.tries = 0; this.wanted = false; this.timer = null;
   }
   setStatus(s, detail = '') { this.status = s; this.h.onStatus && this.h.onStatus(s, detail); }
   /** server-synchronised wall clock (ms) */
@@ -46,6 +46,7 @@ export class Net {
       case 'welcome':
         this.id = m.id; this.room = m.room; this.offset = m.time - Date.now();
         this.remotes.clear(); for (const p of m.players) this._addRemote(p);
+        this.parked.clear(); for (const v of m.parked || []) this.parked.set(v.id, v); this.taken = new Set(m.taken || []); this.hostId = m.host || 0; this.story = m.story || null;
         this.setStatus('online', m.room); this.h.onWelcome && this.h.onWelcome(m); break;
       case 'join': { const r = this._addRemote(m.p); this.h.onJoin && this.h.onJoin(r); break; }
       case 'leave': { const r = this.remotes.get(m.id); this.remotes.delete(m.id); if (r) this.h.onLeave && this.h.onLeave(r); break; }
@@ -62,9 +63,12 @@ export class Net {
       }
       case 'roster': for (const [id, money] of m.p) { const r = this.remotes.get(id); if (r) r.money = money; } this.h.onRoster && this.h.onRoster(m.p); break;
       case 'chat': this.h.onChat && this.h.onChat(m); { const r = this.remotes.get(m.id); if (r) { r.chat = m.text; r.chatAt = performance.now(); } } break;
-      case 'foot': { const r = this.remotes.get(m.id); if (r) r.foot = { on: !!m.on, x: m.x, z: m.z, h: m.h, m: m.m, a: m.a, s: m.s, t: performance.now() }; break; }
-      case 'rtc': this.h.onRtc && this.h.onRtc(m); break;
-      case 'st': this.h.onStory && this.h.onStory(m); break;
+      case 'pk+': this.parked.set(m.v.id, m.v); this.h.onParkAdd && this.h.onParkAdd(m.v, m.by); break;
+      case 'pk-': this.parked.delete(m.id); if (/^s\d+$/.test(m.id)) this.taken.add(m.id); this.h.onParkDel && this.h.onParkDel(m.id, m.by); break;
+      case 'enter': this.h.onEnter && this.h.onEnter(m); break;
+      case 'story': this.story = m.s; this.hostId = m.s.host; this.h.onStory && this.h.onStory(m.s); break;
+      case 'host': { const was = this.hostId; this.hostId = m.id; this.h.onHost && this.h.onHost(m.id, was); break; }
+      case 'ev': this.h.onEv && this.h.onEv(m.k, m.d, m.from); break;
       case 'pong': { const rtt = Date.now() - m.ts; this.rtt = this.rtt ? this.rtt * 0.6 + rtt * 0.4 : rtt; break; }
       case 'error': this.h.onError && this.h.onError(m.msg); break;
       default: break;
@@ -77,10 +81,14 @@ export class Net {
     if (this.status !== 'online' || t - this.lastSend < SEND_MS) return;
     this.lastSend = t;
     if (veh.teleported) { this.send({ t: 'tp' }); veh.teleported = false; }
-    this.send({ t: 's', x: veh.x, z: veh.z, h: veh.h, v: veh.u, st: veh.steerAngle / (veh.spec.maxSteer || 1), f: flags });
+    this.send({ t: 's', x: veh.x, z: veh.z, h: veh.h, v: veh.u, st: veh.steerAngle / ((veh.spec && veh.spec.maxSteer) || 1), f: flags });
   }
+  get isHost() { return this.status === 'online' && this.hostId === this.id; }
+  sendExit(veh, color, x, z, h) { this.send({ t: 'exit', veh, color, x, z, h }); }
+  sendEnter(id, v) { this.send({ t: 'enter', id, v }); }
+  sendEv(k, d, to) { this.send({ t: 'ev', k, d, to }); }
+  sendStory(t, o = {}) { this.send({ t, ...o }); }
   sendVehicle(veh, color) { this.send({ t: 'veh', veh, color }); }
-  sendFoot(o) { this.send({ t: 'foot', ...o }); }
   sendChat(text) { this.send({ t: 'chat', text }); }
   sendMoney(m) { this.send({ t: 'm', m }); }
 
@@ -101,4 +109,4 @@ export class Net {
     return out;
   }
 }
-export const FLAG = { BRAKE: 1, LIGHTS: 2, HORN: 4, REVERSE: 8 };
+export const FLAG = { BRAKE: 1, LIGHTS: 2, HORN: 4, REVERSE: 8, FOOT: 16, RUN: 32, AIR: 64, GUN: 128 };

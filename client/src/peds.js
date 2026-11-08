@@ -1,5 +1,5 @@
 // Pedestrians, street animals and the police chase. Pure logic (no three.js): the scene only draws what update() produces.
-import { Vehicle, SPECS } from './physics.js';
+import { Vehicle } from './physics.js';
 import { mulberry32, clamp } from './noise.js';
 
 const SHIRTS = ['#c0392b', '#2980b9', '#27ae60', '#f1c40f', '#ecf0f1', '#8e44ad', '#e67e22', '#16a085', '#d35400', '#34495e', '#f5b7b1', '#aed6f1'];
@@ -65,64 +65,43 @@ export class Crowd {
 
 /** Police (GTA-style): stars 1-5 set unit count, speed, aggression and roadblocks. Each unit is a real Vehicle, so they respect buildings, water and bridges. */
 const LEVELS = [null,
-  { n: 1, spd: 0.72, acc: 0.8, lead: 0.2, swat: 0, bike: 0, cops: 0, block: false, far: 420, spawn: 300, name: 'Patrol' },
-  { n: 2, spd: 0.85, acc: 0.95, lead: 0.5, swat: 0, bike: 1, cops: 1, block: false, far: 480, spawn: 260, name: 'Pursuit' },
-  { n: 3, spd: 0.95, acc: 1.1, lead: 0.8, swat: 0, bike: 1, cops: 2, block: true, far: 560, spawn: 230, name: 'Roadblocks' },
-  { n: 4, spd: 1.05, acc: 1.25, lead: 1.0, swat: 1, bike: 2, cops: 3, block: true, far: 650, spawn: 200, name: 'SWAT' },
-  { n: 5, spd: 1.15, acc: 1.45, lead: 1.3, swat: 2, bike: 2, cops: 4, block: true, far: 760, spawn: 180, name: 'Army of cops' }];
+  { n: 1, spd: 0.72, acc: 0.8, lead: 0.2, swat: 0, block: false, far: 420, spawn: 300, name: 'Patrol' },
+  { n: 2, spd: 0.85, acc: 0.95, lead: 0.5, swat: 0, block: false, far: 480, spawn: 260, name: 'Pursuit' },
+  { n: 3, spd: 0.95, acc: 1.1, lead: 0.8, swat: 0, block: true, far: 560, spawn: 230, name: 'Roadblocks' },
+  { n: 4, spd: 1.05, acc: 1.25, lead: 1.0, swat: 1, block: true, far: 650, spawn: 200, name: 'SWAT' },
+  { n: 5, spd: 1.15, acc: 1.45, lead: 1.3, swat: 2, block: true, far: 760, spawn: 180, name: 'Army of cops' }];
 export class Police {
-  constructor(world) { this.w = world; this.active = false; this.cars = []; this.stars = 0; this.far = 0; this.close = 0; this.blockT = 0; this.cops = []; this.say = []; }
+  constructor(world) { this.w = world; this.active = false; this.cars = []; this.stars = 0; this.far = 0; this.close = 0; this.blockT = 0; }
   get lv() { return LEVELS[clamp(this.stars, 1, 5)]; }
   get units() { return this.cars.filter(c => !c.block && c.hp > 0); }
   get car() { const u = this.units; return u.length ? u[0].car : (this.cars[0] && this.cars[0].car); }
-  _make(x, z, h, swat, block, bike) {
-    const L = this.lv, car = new Vehicle(swat ? 'bus' : 'car', this.w); car.spec = { ...car.spec, maxSpeed: car.spec.maxSpeed * L.spd * (bike ? 1.2 : 1), accel: car.spec.accel * L.acc * (bike ? 1.6 : 1), brake: car.spec.brake * 1.2, ...(bike ? { len: 2.1, wid: 0.8 } : {}) };
-    car.reset(x, z, h); const P = { car, bike: !!bike, hp: swat ? 160 : bike ? 45 : 100, stuck: 0, rev: 0, dead: 0, swat, block: !!block, id: 'pol' + (this.nid = (this.nid || 0) + 1) }; this.cars.push(P); return P;
+  _make(x, z, h, swat, block) {
+    const L = this.lv, car = new Vehicle(swat ? 'bus' : 'car', this.w); car.spec = { ...car.spec, maxSpeed: car.spec.maxSpeed * L.spd, accel: car.spec.accel * L.acc, brake: car.spec.brake * 1.2 };
+    car.reset(x, z, h); const P = { car, hp: swat ? 160 : 100, stuck: 0, rev: 0, dead: 0, swat, block: !!block, id: 'pol' + (this.nid = (this.nid || 0) + 1) }; this.cars.push(P); return P;
   }
-  _spawn(player, swat, bike) {
+  _spawn(player, swat) {
     const w = this.w, L = this.lv; let spot = null;
-    const sts = (w.policeStations || []).filter(s => { const d = Math.hypot(s.x - player.x, s.z - player.z); return d > 140 && d < 1100; }).sort((a, b) => Math.hypot(a.x - player.x, a.z - player.z) - Math.hypot(b.x - player.x, b.z - player.z));
-    if (sts.length && Math.random() < 0.7) { const s = sts[Math.floor(Math.random() * Math.min(2, sts.length))]; spot = w.snapToRoad(s.x, s.z, 80, 6); if (spot) this.say.push('Unit leaving ' + s.name); }
     for (let k = 0; k < 10 && !spot; k++) { const a = Math.random() * Math.PI * 2, d = L.spawn * (0.8 + Math.random() * 0.5); spot = w.snapToRoad(player.x + Math.cos(a) * d, player.z + Math.sin(a) * d, 160, 5); }
     if (!spot) spot = w.snapToRoad(player.x, player.z, 500, 6); if (!spot) return false;
-    this._make(spot.x, spot.z, Math.atan2(player.x - spot.x, player.z - spot.z), swat, false, bike); return true;
+    this._make(spot.x, spot.z, Math.atan2(player.x - spot.x, player.z - spot.z), swat); return true;
   }
-  _fill(player) {
-    const L = this.lv, u = this.units; let live = u.length, swats = u.filter(c => c.swat).length, bikes = u.filter(c => c.bike).length;
-    while (live < L.n) { const sw = swats < L.swat, bk = !sw && bikes < L.bike; if (!this._spawn(player, sw, bk)) break; live++; if (sw) { swats++; this.say.push('SWAT team deployed'); } if (bk) { bikes++; this.say.push('Motorcycle unit in pursuit'); } }
-  }
-  _spawnCop(player) {
-    const w = this.w, a = Math.random() * 6.283, d = 55 + Math.random() * 40, sn = w.snapToRoad(player.x + Math.cos(a) * d, player.z + Math.sin(a) * d, 40, 7); if (!sn) return;
-    const p = w.roadPoint(sn.road, sn.s, sn.road.halfW + 1.5, {}); this.cops.push({ x: p.x, z: p.z, h: 0, phase: Math.random() * 6, moving: 1, hp: 1 });
-  }
-  killCop(i) { const c = this.cops[i]; if (!c) return false; this.cops.splice(i, 1); this.say.push('Officer down!'); return true; }
-  _moveCops(dt, player) {
-    const w = this.w, L = this.lv; while (this.cops.length < L.cops) this._spawnCop(player);
-    for (let i = this.cops.length - 1; i >= 0; i--) {
-      const c = this.cops[i], dx = player.x - c.x, dz = player.z - c.z, d = Math.hypot(dx, dz) || 1; if (d > 420) { this.cops.splice(i, 1); continue; }
-      const sp = d > 2 ? 4.4 + this.stars * 0.35 : 0; let nx = c.x + dx / d * sp * dt, nz = c.z + dz / d * sp * dt;
-      if (w.heightAt(nx, nz) < -0.4) { nx = c.x; nz = c.z; }
-      for (const b of w.buildingsNear(nx, nz)) { const ex = nx - b.x, ez = nz - b.z, lx = ex * b.c + ez * b.s, lz = -ex * b.s + ez * b.c, px = b.hw + 0.4 - Math.abs(lx), pz = b.hd + 0.4 - Math.abs(lz); if (px > 0 && pz > 0) { let ux = 0, uz = 0; if (px < pz) ux = Math.sign(lx || 1) * px; else uz = Math.sign(lz || 1) * pz; nx += ux * b.c - uz * b.s; nz += ux * b.s + uz * b.c; } }
-      c.x = nx; c.z = nz; c.h = Math.atan2(dx, dz); c.phase += dt * 11; c.moving = sp > 0 ? 1.3 : 0; c.dist = d;
-    }
-  }
+  _fill(player) { const L = this.lv, u = this.units; let live = u.length, swats = u.filter(c => c.swat).length; while (live < L.n) { const sw = swats < L.swat; if (!this._spawn(player, sw)) break; live++; if (sw) swats++; } }
   _roadblock(player) {
     const L = this.lv, sp = Math.hypot(player.vx || 0, player.vz || 0); if (sp < 6) return false;
     const ux = player.vx / sp, uz = player.vz / sp, d = 170 + sp * 3, snap = this.w.snapToRoad(player.x + ux * d, player.z + uz * d, 60, 5); if (!snap) return false;
     const r = snap.road, p = this.w.roadPoint(r, snap.s, 0, {}), hw = r.halfW, perp = p.h + Math.PI / 2;
     if (Math.hypot(p.x - player.x, p.z - player.z) < 90) return false;
-    for (const off of [-hw * 0.55, hw * 0.55]) { const q = this.w.roadPoint(r, snap.s, off, {}); this._make(q.x, q.z, perp, false, true).car.fuel = 0; } this.say.push('Roadblock set ahead of the suspect');
+    for (const off of [-hw * 0.55, hw * 0.55]) { const q = this.w.roadPoint(r, snap.s, off, {}); this._make(q.x, q.z, perp, false, true).car.fuel = 0; }
     this.cars = this.cars.filter(c => !c.block || c.age === undefined || c.age < 40); this.cars.filter(c => c.block).forEach(c => { if (c.age === undefined) c.age = 0; }); return true;
   }
-  start(player, stars = 1) { this.stars = Math.max(this.stars, clamp(stars, 1, 5)); if (!this.active) { this.cars = []; this.far = this.close = 0; this.blockT = 8; this.cops = []; this.say.push('Dispatch: suspect spotted, all units respond'); } this.active = true; this._fill(player); return this.cars.length > 0; }
-  raise(player, n = 1) { if (!this.active) return this.start(player, n); this.stars = Math.min(5, this.stars + n); this.say.push(`Suspect now level ${this.stars} - requesting backup`); this._fill(player); return true; }
-  stop() { this.active = false; this.stars = 0; this.cars = []; this.cops = []; }
-  damage(i, dmg) { const c = this.cars[i]; if (!c || c.hp <= 0) return false; c.hp -= dmg; if (c.hp <= 0) { c.hp = 0; c.dead = 0; this.say.push('Officer down! Officer down!'); return true; } return false; }
+  start(player, stars = 1) { this.stars = Math.max(this.stars, clamp(stars, 1, 5)); if (!this.active) { this.cars = []; this.far = this.close = 0; this.blockT = 8; } this.active = true; this._fill(player); return this.cars.length > 0; }
+  raise(player, n = 1) { if (!this.active) return this.start(player, n); this.stars = Math.min(5, this.stars + n); this._fill(player); return true; }
+  stop() { this.active = false; this.stars = 0; this.cars = []; }
+  damage(i, dmg) { const c = this.cars[i]; if (!c || c.hp <= 0) return false; c.hp -= dmg; if (c.hp <= 0) { c.hp = 0; c.dead = 0; return true; } return false; }
   /** returns 'escaped' | 'caught' | 'cleared' | null */
   update(dt, player) {
     if (!this.active) return null; const L = this.lv; let minD = 1e9, live = 0;
     this._fill(player);   // wrecked units are replaced from a distance
-    this._moveCops(dt, player); let copD = 1e9; for (const c of this.cops) copD = Math.min(copD, c.dist || 1e9);
     if (L.block && (this.blockT -= dt) < 0) { this.blockT = 22; this._roadblock(player); }
     for (let i = this.cars.length - 1; i >= 0; i--) {
       const P = this.cars[i], c = P.car, dx = player.x - c.x, dz = player.z - c.z, dist = Math.hypot(dx, dz);
@@ -142,7 +121,7 @@ export class Police {
     }
     if (!live) { this.stop(); return 'cleared'; }
     if (minD > L.far) { this.far += dt; if (this.far > 10) { this.stop(); return 'escaped'; } } else this.far = 0;
-    if ((minD < 11 || copD < 2.6) && player.speed < 3) { this.close += dt; if (this.close > Math.max(1.0, 2.6 - this.stars * 0.3)) { this.stop(); return 'caught'; } } else this.close = Math.max(0, this.close - dt);
+    if (minD < 11 && player.speed < 3) { this.close += dt; if (this.close > Math.max(1.0, 2.6 - this.stars * 0.3)) { this.stop(); return 'caught'; } } else this.close = Math.max(0, this.close - dt);
     return null;
   }
 }

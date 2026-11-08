@@ -4,7 +4,7 @@ import { SPECS } from './physics.js';
 
 export const FUEL_PRICE = 105; // rupees per litre
 const SCALE_KM = 0.001;        // 1 game metre = 1 real metre
-const AVG_SPEED = { car: 13, bus: 10, lorry: 8 };
+const AVG_SPEED = { car: 13, bus: 10, lorry: 8, bike: 14 };
 
 const CARGO = {
   Guntur: ['Guntur red chillies', 'Turmeric sacks'], Vijayawada: ['Mango crates', 'Electronics'], Visakhapatnam: ['Steel coils', 'Fishing nets'],
@@ -20,7 +20,7 @@ function pickDrop(city, rnd) { return city.dropPoints[Math.floor(rnd() * city.dr
 
 export function generateOffers(world, vehType, nearCity, seed = 1, count = 3) {
   const rnd = mulberry32(strHash(vehType + nearCity.name) ^ (seed * 2654435761));
-  const [minD, maxD] = vehType === 'car' ? [1500, 9000] : vehType === 'bus' ? [3000, 16000] : [3500, 26000];
+  const [minD, maxD] = (vehType === 'car' || vehType === 'bike') ? [1500, 9000] : vehType === 'bus' ? [3000, 16000] : [3500, 26000];
   const cities = world.cities.filter(c => c !== nearCity && !(c.name === 'Tirumala' && vehType === 'bus'));
   const offers = [];
   let tries = 0;
