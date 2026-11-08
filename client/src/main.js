@@ -64,6 +64,8 @@ function buildMenu() {
   const vehBtns = (host, onPick) => { [...host.querySelectorAll('button')].forEach(b => { b.classList.toggle('sel', b.dataset.veh === G.profile.veh); b.onclick = () => { onPick(b.dataset.veh); [...host.querySelectorAll('button')].forEach(k => k.classList.toggle('sel', k === b)); }; }); };
   vehBtns($('vehPick'), v => { G.profile.veh = v; });
   $('startBtn').onclick = startGame;
+  $('storyBtn').onclick = () => { try { sessionStorage.setItem('wantStory', '1'); } catch (e) { /* ignore */ } startGame(); };
+  try { if (sessionStorage.getItem('wantStory') === '1') setTimeout(startGame, 400); } catch (e) { /* ignore */ }
   $('name').addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
   G.swatches = swatches; G.vehBtns = vehBtns;
 }
@@ -125,6 +127,7 @@ async function startGame() {
   G.running = true; G.paused = false; G.lastT = performance.now(); G.acc = 0;
   if (!G.started) { G.started = true; requestAnimationFrame(frame); }
   toast(`Welcome to ${c.name}! Press J for jobs, M for the map`, 3500);
+  try { if (sessionStorage.getItem('wantStory') === '1') { sessionStorage.removeItem('wantStory'); setTimeout(() => G.storyC.openLobby(), 700); } } catch (e) { /* ignore */ }
 }
 
 function applyVehicleChange() {

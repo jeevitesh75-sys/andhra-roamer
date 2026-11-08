@@ -9,8 +9,9 @@ const web=http.createServer((q,r)=>{let p=q.url.split('?')[0];if(p==='/')p='/ind
 await new Promise(r=>setTimeout(r,600));
 const b=await chromium.launch(); const errs=[];
 const mk=async n=>{const pg=await b.newPage({viewport:{width:900,height:480},hasTouch:true});pg.on('pageerror',e=>errs.push(n+': '+e));pg.on('console',m=>{if(m.type()==='error')errs.push(n+' c: '+m.text())});
- await pg.route('**/three.module.js',r=>r.fulfill({contentType:'text/javascript',body:mock}));await pg.goto('http://localhost:8098/');await pg.waitForSelector('#menu:not([hidden])',{timeout:20000});await pg.fill('#name',n);await pg.fill('#room','t1');await pg.selectOption('#region','vizag');await pg.waitForTimeout(600);await pg.click('#startBtn');await pg.waitForSelector('#hud:not([hidden])',{timeout:60000});return pg};
+ await pg.route('**/three.module.js',r=>r.fulfill({contentType:'text/javascript',body:mock}));await pg.goto('http://localhost:8098/');await pg.waitForSelector('#menu:not([hidden])',{timeout:20000});await pg.fill('#name',n);await pg.fill('#room','t1');await pg.selectOption('#region','vizag');await pg.waitForTimeout(600);await pg.click(n==='Sita'?'#storyBtn':'#startBtn');await pg.waitForSelector('#hud:not([hidden])',{timeout:60000});return pg};
 const A=await mk('Ravi'),B=await mk('Sita');await A.waitForTimeout(2500);
+console.log('lobby auto-open after Story button (B):',await B.evaluate(()=>!document.getElementById('lobby').hidden));
 const ev=(pg,f)=>pg.evaluate(f);
 console.log('stations',await ev(A,()=>__game.law.stations.length),'static parked',await ev(A,()=>__game.lot.statics.size));
 // exit vehicle
