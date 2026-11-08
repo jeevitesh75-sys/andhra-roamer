@@ -63,31 +63,56 @@ export class Crowd {
   }
 }
 
-/** Police: up to 3 pursuit cars (a real Vehicle each, so they respect buildings, water and bridges). Stars 1-5 set how many and what comes. */
+/** Police (GTA-style): stars 1-5 set unit count, speed, aggression and roadblocks. Each unit is a real Vehicle, so they respect buildings, water and bridges. */
+const LEVELS = [null,
+  { n: 1, spd: 0.72, acc: 0.8, lead: 0.2, swat: 0, block: false, far: 420, spawn: 300, name: 'Patrol' },
+  { n: 2, spd: 0.85, acc: 0.95, lead: 0.5, swat: 0, block: false, far: 480, spawn: 260, name: 'Pursuit' },
+  { n: 3, spd: 0.95, acc: 1.1, lead: 0.8, swat: 0, block: true, far: 560, spawn: 230, name: 'Roadblocks' },
+  { n: 4, spd: 1.05, acc: 1.25, lead: 1.0, swat: 1, block: true, far: 650, spawn: 200, name: 'SWAT' },
+  { n: 5, spd: 1.15, acc: 1.45, lead: 1.3, swat: 2, block: true, far: 760, spawn: 180, name: 'Army of cops' }];
 export class Police {
-  constructor(world) { this.w = world; this.active = false; this.cars = []; this.stars = 0; this.far = 0; this.close = 0; }
-  get car() { return this.cars.find(c => c.hp > 0) ? this.cars.find(c => c.hp > 0).car : (this.cars[0] && this.cars[0].car); }
-  _target() { return this.stars >= 4 ? 3 : this.stars >= 2 ? 2 : 1; }
-  _spawn(player, swat) {
-    const w = this.w; let spot = null;
-    for (let k = 0; k < 10 && !spot; k++) { const a = Math.random() * Math.PI * 2, d = 200 + Math.random() * 120; spot = w.snapToRoad(player.x + Math.cos(a) * d, player.z + Math.sin(a) * d, 160, 5); }
-    if (!spot) spot = w.snapToRoad(player.x, player.z, 500, 6); if (!spot) return false;
-    const car = new Vehicle(swat ? 'bus' : 'car', w); car.reset(spot.x, spot.z, Math.atan2(player.x - spot.x, player.z - spot.z));
-    this.cars.push({ car, hp: 100, stuck: 0, rev: 0, dead: 0, swat, id: 'pol' + (this.nid = (this.nid || 0) + 1) }); return true;
+  constructor(world) { this.w = world; this.active = false; this.cars = []; this.stars = 0; this.far = 0; this.close = 0; this.blockT = 0; }
+  get lv() { return LEVELS[clamp(this.stars, 1, 5)]; }
+  get units() { return this.cars.filter(c => !c.block && c.hp > 0); }
+  get car() { const u = this.units; return u.length ? u[0].car : (this.cars[0] && this.cars[0].car); }
+  _make(x, z, h, swat, block) {
+    const L = this.lv, car = new Vehicle(swat ? 'bus' : 'car', this.w); car.spec = { ...car.spec, maxSpeed: car.spec.maxSpeed * L.spd, accel: car.spec.accel * L.acc, brake: car.spec.brake * 1.2 };
+    car.reset(x, z, h); const P = { car, hp: swat ? 160 : 100, stuck: 0, rev: 0, dead: 0, swat, block: !!block, id: 'pol' + (this.nid = (this.nid || 0) + 1) }; this.cars.push(P); return P;
   }
-  _fill(player) { let live = this.cars.filter(c => c.hp > 0).length; while (live < this._target()) { if (!this._spawn(player, this.stars >= 4 && live === 2)) break; live++; } }
-  start(player, stars = 1) { this.stars = Math.max(this.stars, stars); if (!this.active) { this.cars = []; this.far = this.close = 0; } this.active = true; this._fill(player); return this.cars.length > 0; }
+  _spawn(player, swat) {
+    const w = this.w, L = this.lv; let spot = null;
+    for (let k = 0; k < 10 && !spot; k++) { const a = Math.random() * Math.PI * 2, d = L.spawn * (0.8 + Math.random() * 0.5); spot = w.snapToRoad(player.x + Math.cos(a) * d, player.z + Math.sin(a) * d, 160, 5); }
+    if (!spot) spot = w.snapToRoad(player.x, player.z, 500, 6); if (!spot) return false;
+    this._make(spot.x, spot.z, Math.atan2(player.x - spot.x, player.z - spot.z), swat); return true;
+  }
+  _fill(player) { const L = this.lv, u = this.units; let live = u.length, swats = u.filter(c => c.swat).length; while (live < L.n) { const sw = swats < L.swat; if (!this._spawn(player, sw)) break; live++; if (sw) swats++; } }
+  _roadblock(player) {
+    const L = this.lv, sp = Math.hypot(player.vx || 0, player.vz || 0); if (sp < 6) return false;
+    const ux = player.vx / sp, uz = player.vz / sp, d = 170 + sp * 3, snap = this.w.snapToRoad(player.x + ux * d, player.z + uz * d, 60, 5); if (!snap) return false;
+    const r = snap.road, p = this.w.roadPoint(r, snap.s, 0, {}), hw = r.halfW, perp = p.h + Math.PI / 2;
+    if (Math.hypot(p.x - player.x, p.z - player.z) < 90) return false;
+    for (const off of [-hw * 0.55, hw * 0.55]) { const q = this.w.roadPoint(r, snap.s, off, {}); this._make(q.x, q.z, perp, false, true).car.fuel = 0; }
+    this.cars = this.cars.filter(c => !c.block || c.age === undefined || c.age < 40); this.cars.filter(c => c.block).forEach(c => { if (c.age === undefined) c.age = 0; }); return true;
+  }
+  start(player, stars = 1) { this.stars = Math.max(this.stars, clamp(stars, 1, 5)); if (!this.active) { this.cars = []; this.far = this.close = 0; this.blockT = 8; } this.active = true; this._fill(player); return this.cars.length > 0; }
   raise(player, n = 1) { if (!this.active) return this.start(player, n); this.stars = Math.min(5, this.stars + n); this._fill(player); return true; }
   stop() { this.active = false; this.stars = 0; this.cars = []; }
   damage(i, dmg) { const c = this.cars[i]; if (!c || c.hp <= 0) return false; c.hp -= dmg; if (c.hp <= 0) { c.hp = 0; c.dead = 0; return true; } return false; }
   /** returns 'escaped' | 'caught' | 'cleared' | null */
   update(dt, player) {
-    if (!this.active) return null; let minD = 1e9, live = 0;
+    if (!this.active) return null; const L = this.lv; let minD = 1e9, live = 0;
+    this._fill(player);   // wrecked units are replaced from a distance
+    if (L.block && (this.blockT -= dt) < 0) { this.blockT = 22; this._roadblock(player); }
     for (let i = this.cars.length - 1; i >= 0; i--) {
-      const P = this.cars[i], c = P.car, dx = player.x - c.x, dz = player.z - c.z, dist = Math.hypot(dx, dz); c.fuel = c.spec.tank;
+      const P = this.cars[i], c = P.car, dx = player.x - c.x, dz = player.z - c.z, dist = Math.hypot(dx, dz);
+      if (P.block) { c.fuel = 0; c.step(dt, { throttle: 0, steer: 0, brake: 1, handbrake: true }); P.age = (P.age || 0) + dt; if (P.age > 45 || dist > 700) this.cars.splice(i, 1); continue; }
+      c.fuel = c.spec.tank;
       if (P.hp <= 0) { P.dead += dt; c.step(dt, { throttle: 0, steer: 0, brake: 1, handbrake: true }); if (P.dead > 7) this.cars.splice(i, 1); continue; }
       live++; minD = Math.min(minD, dist);
-      const bear = Math.atan2(dx + (player.vx || 0) * 0.5, dz + (player.vz || 0) * 0.5); let aim = bear;
+      if (P.best === undefined || dist < P.best - 3) { P.best = dist; P.np = 0; } else if (dist > 40 && (P.np = (P.np || 0) + dt) > 7) {   // making no progress: re-place it on a road closer to the player
+        P.np = 0; P.best = undefined; const a = Math.random() * 6.283, d = Math.max(90, Math.min(dist * 0.6, L.spawn * 0.7)), sn = this.w.snapToRoad(player.x + Math.cos(a) * d, player.z + Math.sin(a) * d, 120, 5);
+        if (sn) { c.reset(sn.x, sn.z, Math.atan2(player.x - sn.x, player.z - sn.z)); continue; } }
+      const bear = Math.atan2(dx + (player.vx || 0) * L.lead, dz + (player.vz || 0) * L.lead); let aim = bear;
       if (dist > 25) { let bestS = 1e9; for (const o of [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, 1.6, -1.6]) { const a = c.h + o, px = c.x + Math.sin(a) * 24, pz = c.z + Math.cos(a) * 24, nr = this.w.nearestRoad(px, pz, 6); if (!nr || nr.d > nr.halfW + 1.5) continue; const sc = Math.abs(wrap(a - bear)) + Math.abs(o) * 0.15; if (sc < bestS) { bestS = sc; aim = a; } } }
       const diff = wrap(aim - c.h), sp = Math.abs(c.u || 0), inp = { throttle: 1, brake: 0, steer: clamp(-diff * 1.8, -1, 1), handbrake: false };
       if (dist < 14 && player.speed < 3) { inp.throttle = 0; inp.brake = 0.8; } else if (Math.abs(diff) > 1.2 && sp > 12) { inp.throttle = 0; inp.brake = 0.6; }
@@ -95,8 +120,8 @@ export class Police {
       c.step(dt, inp);
     }
     if (!live) { this.stop(); return 'cleared'; }
-    if (minD > 520) { this.far += dt; if (this.far > 10) { this.stop(); return 'escaped'; } } else this.far = 0;
-    if (minD < 11 && player.speed < 3) { this.close += dt; if (this.close > 2.2) { this.stop(); return 'caught'; } } else this.close = Math.max(0, this.close - dt);
+    if (minD > L.far) { this.far += dt; if (this.far > 10) { this.stop(); return 'escaped'; } } else this.far = 0;
+    if (minD < 11 && player.speed < 3) { this.close += dt; if (this.close > Math.max(1.0, 2.6 - this.stars * 0.3)) { this.stop(); return 'caught'; } } else this.close = Math.max(0, this.close - dt);
     return null;
   }
 }

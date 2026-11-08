@@ -27,4 +27,7 @@ v.reset(sp.x, sp.z, sp.h); let res = null, minD = 1e9;
 for (let i = 0; i < 60 * 70 && !res; i++) { v.step(1 / 60, { throttle: 0, steer: 0, brake: 1, handbrake: false }); res = pol.update(1 / 60, { x: v.x, z: v.z, speed: 0 }); if (pol.car) minD = Math.min(minD, Math.hypot(pol.car.x - v.x, pol.car.z - v.z)); }
 console.log('police start distance', c0.toFixed(0), 'closest', minD.toFixed(0), 'result', res);
 ok(res === 'caught' || minD < c0 * 0.5, 'police close in on a stationary player (result ' + res + ')');
+{ const p5 = new Police(w); v.reset(sp.x, sp.z, sp.h); v.u = 20; v.vx = Math.sin(v.h) * 20; v.vz = Math.cos(v.h) * 20; p5.start(v, 5); let blocks = 0, r5 = null;
+  for (let i = 0; i < 60 * 30 && !r5; i++) { v.step(1 / 60, { throttle: 0.6, steer: 0, brake: 0, handbrake: false }); r5 = p5.update(1 / 60, v); blocks = Math.max(blocks, p5.cars.filter(c => c.block).length); }
+  ok(p5.stars === 5 || r5, '5-star: units ' + p5.units.length + ' swat ' + p5.cars.filter(c => c.swat).length + ' roadblock cars ' + blocks + ' result ' + r5); ok(p5.cars.length >= 5 || r5, '5-star spawns 5+ units'); }
 console.log(fails ? 'PEDS TESTS FAILED' : 'PEDS TESTS PASSED'); process.exit(fails ? 1 : 0);

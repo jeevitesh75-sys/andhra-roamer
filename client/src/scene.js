@@ -396,6 +396,18 @@ export class Scene3D {
     return m;
   }
   removeModel(key) { const m = this.models.get(key); if (!m) return; this.scene.remove(m.group); m.dispose(); this.models.delete(key); }
+  /* ---- on-foot character ---- */
+  setFoot(p) {
+    const T = this.T; if (!p) { if (this.foot) { this.scene.remove(this.foot.g); this.foot = null; } return; }
+    if (!this.foot) {
+      const mk = (w, h, d, c) => new T.Mesh(new T.BoxGeometry(w, h, d), new T.MeshStandardMaterial({ color: c })), g = new T.Group(), body = new T.Group(); g.add(body);
+      const torso = mk(0.5, 0.7, 0.28, p.c1 || '#2980b9'); torso.position.y = 1.15; const head = new T.Mesh(new T.SphereGeometry(0.15, 10, 8), new T.MeshStandardMaterial({ color: p.skin || '#c68b59' })); head.position.y = 1.67;
+      const leg = x => { const pv = new T.Group(); pv.position.set(x, 0.8, 0); const l = mk(0.2, 0.8, 0.22, '#2c3e50'); l.position.y = -0.4; pv.add(l); return pv; }, arm = x => { const pv = new T.Group(); pv.position.set(x, 1.45, 0); const l = mk(0.14, 0.62, 0.16, p.c1 || '#2980b9'); l.position.y = -0.3; pv.add(l); return pv; };
+      const lL = leg(-0.13), lR = leg(0.13), aL = arm(-0.34), aR = arm(0.34); body.add(torso, head, lL, lR, aL, aR); this.scene.add(g); this.foot = { g, body, lL, lR, aL, aR };
+    }
+    const f = this.foot, sw = Math.sin(p.phase || 0) * (p.moving || 0) * 0.9; f.g.position.set(p.x, p.y, p.z); f.g.rotation.y = p.h; f.g.scale.setScalar(p.s || 1);
+    f.lL.rotation.x = sw; f.lR.rotation.x = -sw; f.aL.rotation.x = -sw * 0.8; f.aR.rotation.x = sw * 0.8; f.body.rotation.x = (p.moving || 0) * 0.08; if (p.air) { f.lL.rotation.x = -0.6; f.lR.rotation.x = 0.4; f.aL.rotation.x = f.aR.rotation.x = -2.2; }
+  }
   /* ---- roof gun + tracers ---- */
   attachGun(m, type) {
     if (m.gun) return m.gun; const T = this.T, o = { car: [0, 1.55, -0.3], bus: [0, 3.25, 0.5], lorry: [0, 3.1, 1.2] }[type] || [0, 1.6, 0];

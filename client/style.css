@@ -62,9 +62,10 @@ canvas#bigcanvas{width:auto;height:auto;max-width:100%;max-height:72vh;margin:0 
 .is-touch #touch .tr .gas{grid-column:2;grid-row:1 / span 2;width:92px;height:128px;background:rgba(61,220,132,.32);font-size:20px}
 .is-touch #touch .tr .rev{grid-column:1;grid-row:1;width:68px;height:44px;font-size:14px;background:rgba(255,180,60,.28)}
 .is-touch #touch .tr [data-k=brake]{grid-column:1;grid-row:2;width:68px;height:76px;font-size:14px;background:rgba(231,76,60,.32)}
-.is-touch #touch .tm{top:78px;right:10px;flex-direction:column;gap:6px}.is-touch #touch .tm button{width:68px;height:38px;font-size:12px}
+.is-touch #touch .tm{top:78px;right:10px;display:grid;grid-template-columns:auto auto;gap:6px}.is-touch #touch .tm button{width:62px;height:36px;font-size:11px}
+#touch .ta{position:absolute;display:flex;gap:10px}.is-touch #touch .ta{right:196px;bottom:12px;flex-direction:row}.is-touch #touch .ta button{width:64px;height:64px;font-size:12px;line-height:1.1}.is-touch #touch .ta .act{background:rgba(52,152,219,.4)}
 .is-touch #moneyBox{padding:5px 10px}.is-touch #money{font-size:18px}
-@media (orientation:portrait){.is-touch #dash{left:auto;right:10px;transform:none;bottom:150px}.is-touch #touch .tl{bottom:20px}.is-touch #touch .tr{bottom:20px}}
+@media (orientation:portrait){.is-touch #touch .ta{right:auto;left:10px;bottom:110px}.is-touch #dash{left:auto;right:10px;transform:none;bottom:150px}.is-touch #touch .tl{bottom:20px}.is-touch #touch .tr{bottom:20px}}
 
 canvas#bigcanvas{touch-action:none;cursor:grab}#minimap{pointer-events:auto;cursor:zoom-in}
 #bigmap .rowEnd button#mapZin,#bigmap .rowEnd button#mapZout{width:44px;font-size:20px;padding:6px 0}
@@ -76,5 +77,5 @@ canvas#bigcanvas{touch-action:none;cursor:grab}#minimap{pointer-events:auto;curs
 .hintTap{font-size:12px;color:var(--mut);margin-right:auto}
 .is-touch #wpBox{top:8px;left:46%}.is-touch #wanted{top:44px}
 
-.fire{background:#b3261e!important;color:#fff;font-weight:700}
+.fire{background:rgba(179,38,30,.75)!important;color:#fff;font-weight:700}
 #game{touch-action:none}

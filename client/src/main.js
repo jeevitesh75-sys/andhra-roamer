@@ -143,6 +143,7 @@ function initInput() {
     else if (k === 'Tab') { $('players').hidden = false; renderPlayers(); }
     else if (k === 'KeyH') { G.audio.horn(G.veh.type); }
     else if (k === 'KeyG') e.preventDefault();
+    else if (k === 'KeyE') toggleFoot();
   });
   addEventListener('keyup', e => { G.keys[e.code] = false; if (e.code === 'Tab') $('players').hidden = true; });
   addEventListener('blur', () => { G.keys = {}; });
@@ -181,7 +182,7 @@ function initInput() {
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) G.keys = {}; });
   for (const b of document.querySelectorAll('#touch button')) {
-    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); };
+    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); if (v && k === 'act') toggleFoot(); };
     b.addEventListener('touchstart', on(true), { passive: false }); b.addEventListener('touchend', on(false), { passive: false }); b.addEventListener('touchcancel', on(false), { passive: false });
   }
 }
@@ -278,10 +279,11 @@ function onHit(ev) {
   else { const fine = ev.kind === 'cow' ? 150 : ev.kind === 'goat' ? 80 : 50, paid = Math.min(G.money, fine); G.money -= paid; toast(`You hit a ${ev.kind}! Fine ${rs(paid)}`, 3000); }
 }
 function policeResult(res) {
+  const ls = G.lastStars; 
   for (const k of [...G.scene.models.keys()]) if (k.startsWith('pol')) G.scene.removeModel(k);
   if (res === 'escaped') toast('You escaped the police!', 3500);
   else if (res === 'cleared') toast('All police units wrecked. You are clear!', 3500);
-  else { const fine = Math.min(G.money, 1500); G.money -= fine; G.veh.vx = G.veh.vz = 0; toast(`Caught by the police! Fine ${rs(fine)}`, 4500); }
+  else { const fine = Math.min(G.money, 500 * Math.max(1, G.lastStars || 1)); G.money -= fine; G.veh.vx = G.veh.vz = 0; toast(`Caught by the police! Fine ${rs(fine)}`, 4500); }
 }
 function setWaypoint(p) { G.wp = p; G.scene.setWaypoint(p); if (p) toast('Pin set - follow the blue arrow', 2000); }
 
@@ -289,18 +291,68 @@ function setWaypoint(p) { G.wp = p; G.scene.setWaypoint(p); if (p) toast('Pin se
 function gunFrame(dt, me, pose, v) {
   const gun = G.scene.attachGun(me, v.type), yaw = G.aimYaw ?? pose.h, pit = G.aimPitch || 0;
   G.scene.aimGun(me, yaw, pit, pose.h); G.scene.tickFx(dt); G.gunCd = Math.max(0, (G.gunCd || 0) - dt);
-  if (!(G.keys.KeyG || G.touch.fire) || G.gunCd > 0 || G.paused) return;
+  if (G.foot || !(G.keys.KeyG || G.touch.fire) || G.gunCd > 0 || G.paused) return;
   G.gunCd = 0.11; G.audio.shot(); G.scene.gunFlash(me);
   const ox = pose.x + Math.sin(pose.h) * gun.z * 1 + 0, oy = pose.y + gun.muzzleH, oz = pose.z + Math.cos(pose.h) * gun.z;
   const dx = Math.sin(yaw) * Math.cos(pit), dy = Math.sin(pit), dz = Math.cos(yaw) * Math.cos(pit), RANGE = 160;
   let best = RANGE, hit = null;
   const test = (x, y, z, r, fn) => { const rx = x - ox, ry = y - oy, rz = z - oz, t = rx * dx + ry * dy + rz * dz; if (t < 1 || t > best) return; const cx = ox + dx * t - x, cy = oy + dy * t - y, cz = oz + dz * t - z; if (cx * cx + cy * cy + cz * cz < r * r) { best = t; hit = fn; } };
-  G.police.cars.forEach((P, i) => { if (P.hp > 0) test(P.car.x, (P.car.y || 0) + 1, P.car.z, 2.4, () => { if (G.police.damage(i, 25)) { toast('Police unit destroyed!', 1500); G.audio.crash(3); } }); });
+  G.police.cars.forEach((P, i) => { if (P.hp > 0) test(P.car.x, (P.car.y || 0) + 1, P.car.z, 2.4, () => { if (G.police.damage(i, 25)) { toast('Police unit destroyed! Wanted level up', 1800); G.audio.crash(3); G.police.raise(G.veh, 1); } }); });
   for (const e of G.crowd.list) if (e.state !== 'hit') test(e.x, (e.lift || 0) + 0.9, e.z, e.kind === 'human' ? 0.6 : 0.7, () => {
     e.state = 'hit'; e.t = 0; e.vy = 3; e.hx = dx * 4; e.hz = dz * 4; e.spin = 3;
     if (e.kind === 'human') { toast('You shot a pedestrian! Wanted level up', 2500); if (!G.police.active) G.police.start(G.veh, 2); else if (!G.wantedCd || performance.now() > G.wantedCd) { G.police.raise(G.veh, 1); G.wantedCd = performance.now() + 4000; } } });
   const ex = ox + dx * best, ey = oy + dy * best, ez = oz + dz * best;
   G.scene.tracer(ox + dx * 1.5, oy + dy * 1.5, oz + dz * 1.5, ex, ey, ez); if (hit) hit();
+}
+
+/* ------------------------------------------------ on foot: exit / enter vehicle */
+const PARK = { throttle: 0, steer: 0, brake: 1, handbrake: true };
+function inBuilding(x, z, m = 0.45) { for (const b of G.world.buildingsNear(x, z)) { const dx = x - b.x, dz = z - b.z, lx = dx * b.c + dz * b.s, lz = -dx * b.s + dz * b.c; if (Math.abs(lx) < b.hw + m && Math.abs(lz) < b.hd + m) return true; } return false; }
+function nearVehicle(x, z, skipOwn) {
+  const v = G.veh; if (!skipOwn) { const dx = x - v.x, dz = z - v.z, s = Math.sin(v.h), c = Math.cos(v.h), lz = dx * s + dz * c, lx = dx * c - dz * s; if (Math.abs(lz) < v.spec.len / 2 + 0.5 && Math.abs(lx) < v.spec.wid / 2 + 0.5) return true; }
+  for (const n of G.scene.npcPos) if ((n.x - x) ** 2 + (n.z - z) ** 2 < 6.5) return true;
+  if (G.police.active) for (const P of G.police.cars) if ((P.car.x - x) ** 2 + (P.car.z - z) ** 2 < 8) return true;
+  return false;
+}
+function goodSpot(x, z) { return !inBuilding(x, z) && G.world.heightAt(x, z) > -0.4 && !nearVehicle(x, z, false); }
+function findExitSpot() {
+  const v = G.veh, s = Math.sin(v.h), c = Math.cos(v.h), hw = v.spec.wid / 2 + 1.0, hl = v.spec.len / 2 + 1.3;
+  const cand = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1.6, 0], [1.6, 0], [-1, -0.8], [1, -0.8], [-1, 0.8], [1, 0.8], [0, -1.8], [0, 1.8]];
+  for (const [a, b] of cand) { const lx = a * hw, lz = b * hl, x = v.x + lx * c + lz * s, z = v.z - lx * s + lz * c; if (goodSpot(x, z)) return { x, z }; }
+  const sn = G.world.snapToRoad(v.x, v.z, 40, 7); if (sn) { for (const off of [-4, 4, -7, 7]) { const p = G.world.roadPoint(sn.road, sn.s, off, {}); if (goodSpot(p.x, p.z)) return { x: p.x, z: p.z }; } }
+  return null;
+}
+function toggleFoot() {
+  if (G.paused || modalOpen() || typing() || (G.foot && G.foot.anim)) return; const v = G.veh;
+  if (!G.foot) {
+    if (v.speed > 4) { toast('Stop the vehicle first to get out', 1800); return; }
+    const sp = findExitSpot(); if (!sp) { toast('No safe place to get out here', 2000); return; }
+    G.foot = { x: v.x, z: v.z, y: v.y || 0, h: v.h, vy: 0, lift: 0, phase: 0, moving: 0, s: 0.3, anim: { type: 'exit', t: 0, fx: v.x, fz: v.z, tx: sp.x, tz: sp.z } }; G.veh.vx = G.veh.vz = 0; toast('Out of the vehicle - walk with WASD, Shift to run, Space to jump, E near it to get back in', 3500);
+  } else {
+    const f = G.foot, d = Math.hypot(f.x - v.x, f.z - v.z); if (d > 6 + v.spec.len / 2) { toast(`Your vehicle is ${Math.round(d)} m away - walk back to it`, 2200); return; }
+    f.anim = { type: 'enter', t: 0, fx: f.x, fz: f.z, tx: v.x, tz: v.z };
+  }
+}
+const footProxy = { x: 0, z: 0, h: 0, u: 0, vx: 0, vz: 0, speed: 0, spec: { len: 0.6, wid: 0.6 } };
+function footStep(dt) {
+  const f = G.foot, K = G.keys, T = G.touch, w = G.world, v = G.veh; if (!f) return;
+  if (f.anim) { const a = f.anim; a.t += dt / 0.5; const k = Math.min(1, a.t), e = k * k * (3 - 2 * k); f.x = a.fx + (a.tx - a.fx) * e; f.z = a.fz + (a.tz - a.fz) * e; f.y = w.heightAt(f.x, f.z); f.s = a.type === 'exit' ? 0.3 + 0.7 * e : 1 - 0.8 * e; f.moving = 0.6; f.phase += dt * 8;
+    if (k >= 1) { if (a.type === 'enter') { G.foot = null; G.scene.setFoot(null); G.camYaw = v.h; G.orbit = 0; toast('Back in the vehicle', 1200); return; } f.anim = null; f.s = 1; } }
+  else {
+    const yaw = G.camYaw + G.orbit, fx = Math.sin(yaw), fz = Math.cos(yaw), rx = -Math.cos(yaw), rz = Math.sin(yaw);
+    const fw = ((K.KeyW || K.ArrowUp || T.gas) ? 1 : 0) - ((K.KeyS || K.ArrowDown || T.rev || T.brake) ? 1 : 0), st = ((K.KeyD || K.ArrowRight || T.right) ? 1 : 0) - ((K.KeyA || K.ArrowLeft || T.left) ? 1 : 0);
+    let mx = fx * fw + rx * st, mz = fz * fw + rz * st; const ml = Math.hypot(mx, mz), run = K.ShiftLeft || K.ShiftRight || T.gas, spd = ml > 0 ? (run ? 6.2 : 2.4) : 0;
+    if (ml > 0) { mx /= ml; mz /= ml; f.h = lerpAngle(f.h, Math.atan2(mx, mz), 1 - Math.exp(-12 * dt)); }
+    let nx = f.x + mx * spd * dt, nz = f.z + mz * spd * dt;
+    if (w.heightAt(nx, nz) < -0.4) { nx = f.x; nz = f.z; }
+    for (const b of w.buildingsNear(nx, nz)) { const dx = nx - b.x, dz = nz - b.z, lx = dx * b.c + dz * b.s, lz = -dx * b.s + dz * b.c, ex = b.hw + 0.4 - Math.abs(lx), ez = b.hd + 0.4 - Math.abs(lz); if (ex > 0 && ez > 0) { let px = 0, pz = 0; if (ex < ez) px = Math.sign(lx || 1) * ex; else pz = Math.sign(lz || 1) * ez; nx += px * b.c - pz * b.s; nz += px * b.s + pz * b.c; } }
+    { const dx = nx - v.x, dz = nz - v.z, s = Math.sin(v.h), c = Math.cos(v.h), lz = dx * s + dz * c, lx = dx * c - dz * s, ex = v.spec.wid / 2 + 0.4 - Math.abs(lx), ez = v.spec.len / 2 + 0.4 - Math.abs(lz);
+      if (ex > 0 && ez > 0) { let px = 0, pz = 0; if (ex < ez) px = Math.sign(lx || 1) * ex; else pz = Math.sign(lz || 1) * ez; nx += px * c + pz * s; nz += -px * s + pz * c; } }
+    f.x = nx; f.z = nz; f.moving += ((spd > 0 ? (run ? 1.3 : 0.8) : 0) - f.moving) * Math.min(1, dt * 10); f.phase += dt * (spd > 4 ? 12 : 8) * (spd > 0 ? 1 : 0);
+    const gy = w.heightAt(f.x, f.z); if (f.lift <= 0.001 && f.vy <= 0 && (K.Space || T.fire) && !G.jumpHeld) { f.vy = 5.2; G.jumpHeld = true; } if (!(K.Space || T.fire)) G.jumpHeld = false;
+    f.vy -= 14 * dt; f.lift += f.vy * dt; if (f.lift < 0) { f.lift = 0; f.vy = 0; } f.y = gy + f.lift;
+  }
+  footProxy.x = f.x; footProxy.z = f.z; footProxy.h = f.h; footProxy.speed = 0;
 }
 function policeBump(v) {
   if (!G.police.active) return;
@@ -314,10 +366,10 @@ function policeBump(v) {
   }
 }
 function stepSim(dt) {
-  const v = G.veh, inp = readInput(dt);
-  v.step(dt, inp);
-  for (const ev of G.crowd.update(dt, v)) onHit(ev);
-  { const res = G.police.update(dt, v); if (res) policeResult(res); policeBump(v); }
+  const v = G.veh, inp = G.foot ? PARK : readInput(dt);
+  v.step(dt, inp); footStep(dt); const tg = G.foot ? footProxy : v;
+  for (const ev of G.crowd.update(dt, tg)) onHit(ev);
+  { if (G.police.active) G.lastStars = G.police.stars; const res = G.police.update(dt, tg); if (res) policeResult(res); policeBump(v); }
   // soft collisions with ambient traffic
   const np = G.scene.npcPos;
   for (let i = 0; i < np.length; i++) {
@@ -350,7 +402,10 @@ function poseOf(alpha, out) {
 function updateCamera(dt, pose) {
   const cam = G.scene.camera, v = G.veh, cfg = CAM[v.type], now = performance.now();
   G.shake *= Math.exp(-6 * dt);
-  const me = G.scene.models.get('me'); if (me) me.group.visible = G.camMode !== 2;
+  const me = G.scene.models.get('me'); if (me) me.group.visible = G.camMode !== 2 || !!G.foot;
+  if (G.foot) { const f = G.foot, yaw = G.camYaw + G.orbit, d = 4.6 * G.zoom, tx = f.x - Math.sin(yaw) * d, tz = f.z - Math.cos(yaw) * d, ty = f.y + 2.2 + G.orbitY * 0.5; G.aimYaw = yaw; const k = 1 - Math.exp(-14 * dt);
+    if (!G.camInit) cam.position.set(tx, ty, tz); cam.position.x += (tx - cam.position.x) * k; cam.position.y += (ty - cam.position.y) * k; cam.position.z += (tz - cam.position.z) * k;
+    cam.position.y = Math.max(cam.position.y, G.world.heightAt(cam.position.x, cam.position.z) + 0.6); cam.lookAt(f.x, f.y + 1.4 - G.orbitY * 0.15, f.z); return; }
   let px, py, pz, lx, ly, lz;
   if (G.camMode === 2) { // driver's seat (India: right-hand drive => local -x)
     const e = cfg.eye, s = Math.sin(pose.h), c = Math.cos(pose.h);
@@ -410,7 +465,7 @@ function updateHud(dt, info, serverSec) {
   const { city, dist } = nearestCityInfo(), nr = G.world.nearestRoad(v.x, v.z), onRoad = nr && nr.d < nr.halfW + 3 ? nr.road.ref : '';
   $('where').textContent = dist < city.R ? `${city.name}${city.te ? ' · ' + city.te : ''}` : `${(dist * 0.001).toFixed(1)} km from ${city.name}${onRoad ? ' · ' + onRoad : ''}`;
   { const wp = G.wp, box = $('wpBox'); box.hidden = !wp; if (wp) { const d = Math.hypot(wp.x - v.x, wp.z - v.z); if (d < 25) { setWaypoint(null); toast('You have arrived!', 2500); } else { $('wpDist').textContent = d > 1000 ? `${(d * 0.001).toFixed(1)} km` : `${Math.round(d)} m`; $('wpArrow').style.transform = `rotate(${-(Math.atan2(wp.x - v.x, wp.z - v.z) - v.h) * 57.2958}deg)`; } }
-    const pol = G.police.active; $('wanted').hidden = !pol; if (pol) { const c = G.police.car; $('wantedTxt').textContent = `${'★'.repeat(G.police.stars)}${'☆'.repeat(5 - G.police.stars)}  POLICE - ${G.police.cars.filter(x => x.hp > 0).length} unit(s), nearest ${Math.round(Math.hypot(c.x - v.x, c.z - v.z))} m`; } }
+    const pol = G.police.active; $('wanted').hidden = !pol; if (pol) { const c = G.police.car; $('wantedTxt').textContent = `${'★'.repeat(G.police.stars)}${'☆'.repeat(5 - G.police.stars)}  POLICE - ${G.police.units.length} unit(s) · ${G.police.lv.name}, nearest ${Math.round(Math.hypot(c.x - v.x, c.z - v.z))} m`; } }
   const r = G.runner; $('jobPanel').hidden = !r; $('arrowBox').hidden = !r;
   if (r) {
     const t = r.target, d = Math.hypot(t.x - v.x, t.z - v.z), ang = Math.atan2(t.x - v.x, t.z - v.z) - v.h;
@@ -445,6 +500,8 @@ function frame(now) {
     for (const k of [...G.scene.models.keys()]) if (k.startsWith('pol') && !live.has(k)) G.scene.removeModel(k);
     if (G.police.active && (G.sirenT = (G.sirenT || 0) - dt) < 0) { G.sirenT = 0.9; G.audio.chime(); } }
   gunFrame(dt, me, pose, v);
+  if (G.foot) G.scene.setFoot({ x: G.foot.x, y: G.foot.y, z: G.foot.z, h: G.foot.h, s: G.foot.s, phase: G.foot.phase, moving: G.foot.moving, air: G.foot.lift > 0.15, c1: G.profile.color }); else G.scene.setFoot(null);
+  { const ab = $('actBtn'), fb = document.querySelector('.fire'), foot = !!G.foot; if (ab && G.lastFoot !== foot) { G.lastFoot = foot; ab.innerHTML = foot ? '🚗<br>ENTER' : '🚪<br>EXIT'; if (fb) fb.innerHTML = foot ? '⬆<br>JUMP' : '🔫<br>FIRE'; } }
   updateRemotes(); updateCamera(dt, pose); G.scene.render();
   const flags = (v.brakeLit ? FLAG.BRAKE : 0) | (lightsOn ? FLAG.LIGHTS : 0) | (G.keys.KeyH ? FLAG.HORN : 0) | (v.reversing ? FLAG.REVERSE : 0);
   if (G.net) G.net.sendState(v, flags);

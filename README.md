@@ -30,3 +30,8 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - Police: up to 3 cars, wanted stars 1-5, ramming/collisions, SWAT van at 4+ stars, follow roads.
 - Bridges: cars drive on the deck (no more falling under the road); parapets stop cars falling into the water.
 - NOT yet included: on-foot exit/enter, 4-player story mode, police stations/motorcycles, voice chat.
+
+## Drop 2
+- Buttons: FIRE/EXIT-ENTER moved to their own pad left of GAS; side menu is a 2x2 grid (no overlaps).
+- On foot: E (or EXIT/ENTER button) leaves the vehicle to a safe spot (not in walls/water/other vehicles); WASD walk, Shift run, Space/JUMP jump, drag to look; E near your vehicle to get back in. Vehicle stays parked; other players see the parked vehicle (their view of your character is not synced yet).
+- Police by stars: 1 patrol (slower than you), 2 two faster cars, 3 + roadblocks ahead of you, 4 + SWAT van, 5 five units, fastest, 2 SWAT. Wrecked units are replaced, destroying one adds a star, escape distance grows with stars, fine = Rs 500 x stars.
