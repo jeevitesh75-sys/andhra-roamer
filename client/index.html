@@ -60,7 +60,7 @@
   <div id="flash"></div>
   <div id="help">H horn · L lights · C camera · J jobs · M map · V vehicle · Esc menu</div>
   <div id="mates"></div>
-  <div id="sysBar"><button id="fsBtn" title="Full screen [U]">⛶</button><button id="micDesk" title="Voice chat [B]">🎤</button><button id="gatherDesk" title="Go to a friend [T]">👥</button></div>
+  <div id="sysBar"><button id="cfgBtn" title="Menu / settings">⚙</button><button id="fsBtn" title="Full screen [U]">⛶</button><button id="micDesk" title="Voice chat [B]">🎤</button><button id="gatherDesk" title="Go to a friend [T]">👥</button></div>
   <div id="touch" hidden>
     <div class="tl"><button data-k="left">◀</button><button data-k="right">▶</button></div>
     <div class="tr"><button data-k="rev" class="rev">REV</button><button data-k="gas" class="gas">GAS</button><button data-k="brake">BRAKE</button></div>
@@ -81,7 +81,7 @@
   <div class="bar top"></div><div class="bar bottom"></div>
   <div id="cineTitle"></div>
   <div id="cineSub"><div id="cineWho"></div><div id="cineText"></div></div>
-  <div id="cineFoot"><span id="cineReady"></span><button id="cineSkip">SKIP &#9654;</button></div>
+  <div id="cineFoot"><span id="cineReady"></span><button id="cineVoice">🔊 Voice ON</button><button id="cineSkip">SKIP &#9654;</button></div>
 </div>
 <div id="callBox" hidden><div id="callAva">📞</div><div><b id="callWho"></b><div id="callTxt"></div></div></div>
 <div id="objective" hidden><div id="objChap"></div><div id="objTitle"></div><div id="objText"></div><div class="jobRow"><span id="objDist"></span><span id="objTime"></span></div><div id="objTeam"></div></div>
@@ -94,6 +94,7 @@
 <div id="storyEnd" class="screen" hidden><div class="card"><h2 id="endTitle"></h2><p class="sub" id="endText"></p><div class="rowEnd"><button id="endClose" class="big" style="width:auto;margin:0">CONTINUE</button></div></div></div>
 
 <div id="tags"></div>
+<div id="hudEdit" hidden><span id="hudSel">Drag any button to move it.</span><input type="range" id="hudScale" min="0.5" max="1.8" step="0.05" value="1"><button id="hudReset">Reset all</button><button id="hudDone" class="big">DONE</button></div>
 
 <div id="board" class="screen" hidden><div class="card"><h2 id="boardTitle">Job board</h2><div id="boardList"></div><div class="rowEnd"><button id="boardRefresh">New offers</button><button id="boardClose">Close [J]</button></div></div></div>
 <div id="garage" class="screen" hidden><div class="card"><h2>Garage</h2><p class="sub">Switching vehicles refuels you, cancels any active job and is shared with other players.</p>
@@ -103,6 +104,8 @@
 <div id="pause" class="screen" hidden><div class="card"><h2>Menu</h2>
   <label>Graphics<select id="quality"><option value="low">Low (fast)</option><option value="medium">Medium</option><option value="high">High</option></select></label>
   <label>Volume<input id="volume" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+  <label class="inl"><input type="checkbox" id="speechChk" checked> Read story dialogue aloud (voice)</label>
+  <button id="hudEditBtn" class="big">Customize buttons (move / resize)</button>
   <div class="row2"><button id="pauseResume" class="big">Resume</button><button id="pauseLeave">Quit to menu</button></div>
   <div class="note" id="pauseInfo"></div></div></div>
 

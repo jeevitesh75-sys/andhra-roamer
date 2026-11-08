@@ -10,6 +10,8 @@ import { generateOffers, JobRunner, FUEL_PRICE, rankFor } from './jobs.js';
 import { AudioFX } from './audio.js';
 import { toggleFullscreen, Voice, Team } from './extras.js';
 import { Characters } from './characters.js';
+import { Speech } from './speech.js';
+import { HudEdit } from './hudedit.js';
 import { ParkedLot, distToVehicle } from './parked.js';
 import { Law } from './law.js';
 import { Joystick } from './joystick.js';
@@ -120,7 +122,7 @@ async function startGame() {
     onParkAdd: (v, by) => { if (by === G.net.id && G.myPark && G.myPark.startsWith('me~')) { const e = G.lot.dyn.get(G.myPark); G.lot.dyn.delete(G.myPark); G.lot.dyn.set(v.id, { ...(e || {}), ...v, mine: true }); G.myPark = v.id; } else G.lot.dyn.set(v.id, v); },
     onParkDel: (id, by) => { G.lot.dyn.delete(id); if (/^s\d+$/.test(id)) G.lot.taken.add(id); if (id === G.myPark && by !== G.net.id) { G.myPark = null; toast('Someone took your vehicle!', 2500); } },
     onEnter: onEnterReply, onStory: s => G.storyC.onState(s), onHost: () => {}, onEv: (k, d, from) => onEv(k, d, from) });
-  const url = new URLSearchParams(location.search).get('server') || (window.GAME_CONFIG && window.GAME_CONFIG.SERVER_URL) || '';
+  const url = serverUrl();
   G.net.disconnect();
   if (url) G.net.connect(url, { name: prof.name, veh: prof.veh, color: prof.color, room: prof.region + '-' + (prof.room || 'open') });
   else onNetStatus('offline', 'Offline mode (no server URL set)');
@@ -236,6 +238,10 @@ function initHud() {
   $('wpClear').onclick = () => setWaypoint(null);
   $('boardRefresh').onclick = () => { G.offerSeed++; renderBoard(); };
   $('pauseResume').onclick = () => togglePause(false);
+  $('status').onclick = () => { if (G.net && G.net.status !== 'online') askServer(); }; $('status').style.pointerEvents = 'auto'; $('menuStatus').onclick = () => { if (G.net && G.net.status !== 'online') askServer(); };
+  { const c = $('speechChk'); if (c) { c.checked = Speech.on; c.onchange = () => Speech.set(c.checked); } }
+  if ($('cfgBtn')) $('cfgBtn').onclick = () => togglePause(true);
+  $('hudEditBtn').onclick = () => { closeModals(); if (!G.hudEdit) G.hudEdit = new HudEdit(G, toast); G.paused = true; G.hudEdit.start(); };
   $('pauseLeave').onclick = () => { closeModals(); G.running = false; G.net.disconnect(); clearTags(); $('hud').hidden = true; $('menu').hidden = false; G.audio.update(0, 0, 0, 'car'); persist(); };
   $('quality').value = G.scene.qName; $('quality').onchange = e => { G.scene.setQuality(e.target.value); persist(); };
   $('volume').oninput = e => G.audio.setVolume(Number(e.target.value));
@@ -246,6 +252,16 @@ function toast(msg, ms = 2200) { const t = $('toast'); t.textContent = msg; t.hi
 function addChat(name, text) {
   const d = document.createElement('div'), b = document.createElement('b'); b.textContent = name + ': '; d.appendChild(b); d.appendChild(document.createTextNode(text));
   const log = $('chatlog'); log.appendChild(d); while (log.children.length > 7) log.removeChild(log.firstChild); setTimeout(() => d.remove(), 14000);
+}
+function serverUrl() {
+  const q = new URLSearchParams(location.search).get('server'); if (q) { try { localStorage.setItem('ar_server', q); } catch (e) { /* ignore */ } return q; }
+  let saved = ''; try { saved = localStorage.getItem('ar_server') || ''; } catch (e) { /* ignore */ }
+  return saved || (window.GAME_CONFIG && window.GAME_CONFIG.SERVER_URL) || '';
+}
+function askServer() {
+  const cur = (G.net && G.net.url) || serverUrl(), v = prompt('Game server address (your Render URL, e.g. wss://andhra-roamer-server.onrender.com).\nLeave empty to use the default.', cur); if (v === null) return;
+  try { if (v.trim()) localStorage.setItem('ar_server', v.trim()); else localStorage.removeItem('ar_server'); } catch (e) { /* ignore */ }
+  const url = serverUrl(), prof = G.profile; G.net.disconnect(); if (url) G.net.connect(url, { name: prof.name, veh: prof.veh, color: prof.color, room: prof.region + '-' + (prof.room || 'open') }); toast('Connecting to ' + url, 2500);
 }
 function onNetStatus(s, detail) {
   const el = $('status'); el.className = 'pill ' + (s === 'online' ? 'on' : 'warn');
@@ -441,7 +457,7 @@ function die() {
 function respawnAt(st) {
   const ns = st || (G.law.nearestStation(G.foot ? G.foot.x : G.veh.x, G.foot ? G.foot.z : G.veh.z) || {}).st, sp = ns ? ns.door : { x: G.veh.x, z: G.veh.z };
   const fine = Math.min(G.money, 200); G.money -= fine; G.hp = 100; G.dead = null; G.arrest = null; $('wasted').hidden = true; setStars(0);
-  if (!G.foot) exitVehicle(true); G.foot.anim = null; G.foot.x = sp.x; G.foot.z = sp.z; G.foot.y = G.world.heightAt(sp.x, sp.z); G.camInit = false; toast(fine ? `Hospital bill Rs ${fine}` : 'Back on your feet', 2500);
+  if (!G.foot) exitVehicle(true); G.foot.anim = null; G.foot.x = sp.x; G.foot.z = sp.z; G.foot.y = G.world.heightAt(sp.x, sp.z); G.camInit = false; issueVehicle(sp, fine ? `Hospital bill Rs ${fine}. A vehicle is waiting outside.` : 'Back on your feet - a vehicle is waiting outside.');
 }
 function setStars(n, why) {
   const pol = G.police, P = G.foot ? footProxy : G.veh;
@@ -449,6 +465,14 @@ function setStars(n, why) {
   if (!pol.active) { pol.start(P, n); } else if (n > pol.stars) pol.raise(P, n - pol.stars); else pol.stars = n;
   H.radio(G.law.radioFor(n >= 4 ? 'swat' : n >= 2 ? 'backup' : 'crime', { x: P.x, z: P.z, stars: n }));
   G.lawT = 0;
+}
+/** after arrest / hospital: put the player straight into a vehicle on the road outside, so there is nothing to hunt for */
+function issueVehicle(spot, msg) {
+  const w = G.world, v = G.veh, sn = w.snapToRoad(spot.x, spot.z, 150, 6); let p = { x: spot.x, z: spot.z, h: G.foot ? G.foot.h : v.h };
+  if (sn) { const q = w.roadPoint(sn.road, sn.s, 0, {}); p = { x: q.x, z: q.z, h: q.h }; }
+  if (G.foot) { G.foot.anim = null; G.scene.setFoot(null); G.chars.remove('me'); }
+  v.reset(p.x, p.z, p.h); v.fuel = Math.max(v.fuel, v.spec.tank * 0.8); v.vx = v.vz = 0; G.foot = null; G.camYaw = p.h; G.orbit = 0; G.camInit = false; G.myPark = null; setFootMode(false);
+  toast(msg || 'Here is a vehicle', 4500);
 }
 function startArrest(why) {
   if (G.arrest || G.dead) return; const P = G.foot || G.veh, stars = Math.max(1, G.police.stars || 1);
@@ -459,7 +483,7 @@ function startArrest(why) {
 function arrestStep(dt) {
   const a = G.arrest; if (!a) return; a.t += dt;
   if (a.stage === 'busted' && a.t > 2.5) { a.stage = 'jail'; a.t = 0; G.money -= a.fine; const st = a.st; if (!G.foot) exitVehicle(true); if (st) { G.foot.anim = null; G.foot.x = st.door.x; G.foot.z = st.door.z; G.foot.y = G.world.heightAt(st.door.x, st.door.z); } G.camInit = false; $('wastedTxt').textContent = 'IN CUSTODY'; }
-  if (a.stage === 'jail') { $('wastedSub').textContent = `Questioned by the police... released in ${Math.max(0, Math.ceil(a.time - a.t))}s (fine Rs ${a.fine})`; if (a.t > a.time) { G.arrest = null; $('wasted').hidden = true; toast('Released. Stay out of trouble.', 2500); } }
+  if (a.stage === 'jail') { $('wastedSub').textContent = `Questioned by the police... released in ${Math.max(0, Math.ceil(a.time - a.t))}s (fine Rs ${a.fine})`; if (a.t > a.time) { const st = a.st; G.arrest = null; $('wasted').hidden = true; issueVehicle(st ? st.door : { x: G.foot ? G.foot.x : G.veh.x, z: G.foot ? G.foot.z : G.veh.z }, 'Released. A vehicle is waiting outside the station - stay out of trouble.'); } }
 }
 function policeBump(v) {
   if (!G.police.active) return;
@@ -645,7 +669,7 @@ function showRadio(text) { const r = $('radio'); $('radioTxt').textContent = tex
 const H = {
   toast: (m, ms) => toast(m, ms),
   radio: text => { if (text) { G.law.radio(text); } },
-  call: (who, text) => { const N = NPCS[who] || ROLES[who] || { name: who, emoji: '📞' }; $('callBox').hidden = false; $('callAva').textContent = N.emoji || '📞'; $('callWho').textContent = N.name || who; $('callTxt').textContent = text; clearTimeout(callTimer); callTimer = setTimeout(() => { $('callBox').hidden = true; }, 7000); },
+  call: (who, text) => { Speech.queue(text, who); const N = NPCS[who] || ROLES[who] || { name: who, emoji: '📞' }; $('callBox').hidden = false; $('callAva').textContent = N.emoji || '📞'; $('callWho').textContent = N.name || who; $('callTxt').textContent = text; clearTimeout(callTimer); callTimer = setTimeout(() => { $('callBox').hidden = true; }, 7000); },
   startStory: async () => { if (!G.running) { await startGame(); } G.storyC.openLobby(); },
   stageTeam: A => {   // regroup everyone around the cutscene location
     const roles = G.net && G.net.story ? G.net.story.roles : {}, myRole = G.storyC.myRole, i = Math.max(0, ['mastermind', 'driver', 'hacker', 'insider'].indexOf(myRole));

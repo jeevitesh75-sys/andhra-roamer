@@ -333,7 +333,7 @@ server.on('upgrade', (req, socket) => {
   const upgrade = String(req.headers.upgrade || '').toLowerCase();
   if (!key || upgrade !== 'websocket') { socket.destroy(); return; }
   const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.length && origin && !ALLOWED_ORIGINS.includes(origin)) {
+  if (ALLOWED_ORIGINS.length && origin && !ALLOWED_ORIGINS.includes('*') && !ALLOWED_ORIGINS.includes(origin) && !/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.vercel\.app$/i.test(origin) && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
     socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;

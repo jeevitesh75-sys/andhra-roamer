@@ -2,6 +2,7 @@
 // Works online (server decides when steps advance) and offline (LocalStory mirrors the server rules for solo play).
 import { CHAPTERS, ROLES, NPCS, ROLE_ORDER, ANCHORS, QUESTIONS, RADIO_CHATTER, THUG_LOOK, stepById } from './storydata.js';
 import { mulberry32, strHash } from './noise.js';
+import { Speech } from './speech.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -29,6 +30,7 @@ export class StoryClient {
     $('lobbyLeave').onclick = () => { $('lobby').hidden = true; H.closeStoryLobby && H.closeStoryLobby(); };
     $('lobbyStart').onclick = () => { const ch = Number($('lobbyCh').value) || 1; if (this.net && this.net.status === 'online') this.net.sendStory('sstart', { ch }); else this.local.start(ch); $('lobby').hidden = true; };
     $('cineSkip').onclick = () => this.endCine(true);
+    { const b = $('cineVoice'); if (b) { b.textContent = Speech.on ? '🔊 Voice ON' : '🔇 Voice OFF'; b.onclick = () => { Speech.set(!Speech.on); b.textContent = Speech.on ? '🔊 Voice ON' : '🔇 Voice OFF'; const t = $('speechChk'); if (t) t.checked = Speech.on; if (Speech.on && this.cine) { const sh = this.cine.shots[this.cine.shot]; Speech.speak(sh.text, sh.who); } }; } }
     $('endClose').onclick = () => { $('storyEnd').hidden = true; };
     $('hackCancel').onclick = () => this.closeHack(false);
   }
@@ -155,7 +157,7 @@ export class StoryClient {
     this.setShot(0);
   }
   setShot(i) {
-    const c = this.cine, sh = c.shots[i]; c.shot = i; c.shotT = 0; const who = NPCS[sh.who] || ROLES[sh.who] || { name: '', color: '#fff' }; $('cineWho').textContent = (who.emoji || '') + ' ' + (who.name || ''); $('cineWho').style.color = who.color || '#fff'; $('cineText').textContent = sh.text || '';
+    const c = this.cine, sh = c.shots[i]; c.shot = i; c.shotT = 0; const who = NPCS[sh.who] || ROLES[sh.who] || { name: '', color: '#fff' }; $('cineWho').textContent = (who.emoji || '') + ' ' + (who.name || ''); $('cineWho').style.color = who.color || '#fff'; $('cineText').textContent = sh.text || ''; Speech.speak(sh.text, sh.who); const est = Speech.on && Speech.supported ? Speech.estimate(sh.text, sh.who) : 0; if (est > sh.dur) sh.dur = est;
   }
   updateCine(dt) {
     const c = this.cine, sh = c.shots[c.shot], cam = this.G.scene.camera, A = c.A; c.shotT += dt; c.T += dt;
@@ -167,7 +169,7 @@ export class StoryClient {
     if (c.shotT >= sh.dur) { if (c.shot + 1 < c.shots.length) this.setShot(c.shot + 1); else this.endCine(false); }
   }
   endCine() {
-    if (!this.cine) return; this.cine = null; $('cine').classList.remove('on'); setTimeout(() => { if (!this.cine) $('cine').hidden = true; }, 800); $('cineTitle').classList.remove('on');
+    Speech.stop(); if (!this.cine) return; this.cine = null; $('cine').classList.remove('on'); setTimeout(() => { if (!this.cine) $('cine').hidden = true; }, 800); $('cineTitle').classList.remove('on');
     if (this.sentReady !== this.curId) { this.sentReady = this.curId; if (this.online) this.net.sendStory('sready', { id: this.curId }); else this.local.ready(this.curId); }
     $('cineReady').textContent = this.online ? 'Waiting for the team...' : '';
   }

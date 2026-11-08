@@ -52,3 +52,9 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - **Together**: 👥 button / `T` teleports you next to the nearest friend in the room (same room code = same world).
 - **Voice chat**: 🎤 button / `B` (tap again to mute). WebRTC peer-to-peer; the server only relays the signalling (`rtc` event). Needs https + microphone permission.
 - **Full screen**: ⛶ button / `U` (also in the menu). Android Chrome also locks landscape. iPhone Safari has no full-screen API: use Share > Add to Home Screen.
+
+## v3d changes
+- **Connection**: the client now wakes the sleeping Render server with an HTTP hit first, retries every few seconds forever, accepts `https://`/bare host URLs, and shows which server it is trying. **Tap the status pill** (top / menu) to paste a different server URL - it is remembered on the device, so unzipping updates never resets it. Default `config.js` now points to `wss://andhra-roamer-server.onrender.com`. The server accepts `ALLOWED_ORIGINS=*` properly (it was rejecting every browser when set to `*`), plus any `*.vercel.app`. **Redeploy Render.**
+- **After arrest / hospital**: you are put straight into a vehicle (full tank) on the road outside the station.
+- **Dialogue voice**: story cutscenes and phone calls are read aloud with the browser's text-to-speech (different pitch per character; cutscene shots wait for the voice). Toggle with the 🔊 button in cutscenes or in the menu.
+- **Custom HUD**: ⚙ (top-right) -> *Customize buttons*: drag any control / panel anywhere, tap it and use the slider to resize; saved on the device.
