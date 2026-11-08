@@ -396,6 +396,26 @@ export class Scene3D {
     return m;
   }
   removeModel(key) { const m = this.models.get(key); if (!m) return; this.scene.remove(m.group); m.dispose(); this.models.delete(key); }
+  /* ---- roof gun + tracers ---- */
+  attachGun(m, type) {
+    if (m.gun) return m.gun; const T = this.T, o = { car: [0, 1.55, -0.3], bus: [0, 3.25, 0.5], lorry: [0, 3.1, 1.2] }[type] || [0, 1.6, 0];
+    const yawG = new T.Group(), pitchG = new T.Group(), mat = new T.MeshStandardMaterial({ color: 0x2b2f36 }), mat2 = new T.MeshStandardMaterial({ color: 0x555b66 });
+    const base = new T.Mesh(new T.CylinderGeometry(0.32, 0.4, 0.22, 10), mat), body = new T.Mesh(new T.BoxGeometry(0.34, 0.3, 0.7), mat2), barrel = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 1.1, 8), mat);
+    barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0, 0.85); body.position.set(0, 0, 0.1); pitchG.position.y = 0.3; pitchG.add(body, barrel);
+    const flash = new T.Mesh(new T.SphereGeometry(0.16, 6, 6), new T.MeshBasicMaterial({ color: 0xffd24a })); flash.position.set(0, 0, 1.45); flash.visible = false; pitchG.add(flash);
+    yawG.add(base, pitchG); yawG.position.set(o[0], o[1], o[2]); m.group.add(yawG); m.gun = { yawG, pitchG, flash, muzzleH: o[1] + 0.3, z: o[2], flashT: 0 }; return m.gun;
+  }
+  aimGun(m, worldYaw, pitch, carH) { const g = m.gun; if (!g) return; g.yawG.rotation.y = worldYaw - carH; g.pitchG.rotation.x = -pitch; }
+  gunFlash(m) { if (m.gun) { m.gun.flash.visible = true; m.gun.flashT = 0.05; } }
+  tracer(x0, y0, z0, x1, y1, z1) {
+    const T = this.T; if (!this.tracers) this.tracers = [];
+    const g = new T.BufferGeometry().setFromPoints([new T.Vector3(x0, y0, z0), new T.Vector3(x1, y1, z1)]), l = new T.Line(g, new T.LineBasicMaterial({ color: 0xffe27a }));
+    this.scene.add(l); this.tracers.push({ l, t: 0.07 });
+  }
+  tickFx(dt) {
+    if (this.tracers) for (let i = this.tracers.length - 1; i >= 0; i--) { const t = this.tracers[i]; if ((t.t -= dt) <= 0) { this.scene.remove(t.l); t.l.geometry.dispose(); t.l.material.dispose(); this.tracers.splice(i, 1); } }
+    for (const m of this.models.values()) if (m.gun && m.gun.flashT > 0 && (m.gun.flashT -= dt) <= 0) m.gun.flash.visible = false;
+  }
   /** place a model. pose = {x,z,h,y,pitch,roll,steer,brake,lights,reverse,ax,ay} */
   placeModel(m, pose) {
     const g = m.group; g.position.set(pose.x, pose.y, pose.z); g.rotation.order = 'YXZ';

@@ -172,8 +172,21 @@ export function createOsmWorld(data) {
     const w = (a, b) => (lc(a, b) === 1 ? 1 : 0);
     return lerp(lerp(w(ix, iz), w(ix + 1, iz), tx), lerp(w(ix, iz + 1), w(ix + 1, iz + 1), tx), tz);
   }
-  const heightAt = (x, z) => -WATER_DEPTH * waterFrac(x, z);
+  const terrainHeight = (x, z) => -WATER_DEPTH * waterFrac(x, z);
+  /** ground height for physics/camera: terrain dips under water, but a bridge deck over water is at road level */
+  function heightAt(x, z) {
+    const t = terrainHeight(x, z); if (t > -0.05) return t;
+    const nr = nearestRoad(x, z, 8); return nr && nr.d < nr.halfW + 0.8 ? 0 : t;
+  }
   const naturalHeight = heightAt;
+  /** bridge parapets: keep a vehicle on the deck. returns true when it pushed the vehicle */
+  function bridgeBarrier(v, r) {
+    if (terrainHeight(v.x, v.z) > -0.8) return false;
+    const nr = nearestRoad(v.x, v.z, 8); if (!nr || nr.d > nr.halfW + 3) return false;
+    const lim = Math.max(1.2, nr.halfW - r); if (nr.d <= lim) return false;
+    const p = nr.road.pts, i = nr.i * 2, px = p[i] + (p[i + 2] - p[i]) * nr.t, pz = p[i + 1] + (p[i + 3] - p[i + 1]) * nr.t, nx = (v.x - px) / nr.d, nz = (v.z - pz) / nr.d;
+    v.x = px + nx * lim; v.z = pz + nz * lim; const vn = v.vx * nx + v.vz * nz; if (vn > 0) { v.vx -= 1.4 * vn * nx; v.vz -= 1.4 * vn * nz; v.impact = Math.max(v.impact || 0, vn); } return true;
+  }
   function groundColor(x, z, h, slope, out) {
     const fx = x / meta.cell - 0.5, fz = z / meta.cell - 0.5, ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz;
     let r = 0, g = 0, b = 0;
@@ -206,7 +219,7 @@ export function createOsmWorld(data) {
   const trafficRoads = roads.filter(r => r.cls <= 4 && r.len > 500);
 
   const railStations = (meta.rstations || []).map(s => ({ ...s, rail: railNearest(s.x, s.z, 600) }));
-  return { meta, WORLD, roads, trafficRoads, rails, railsInRect, railNearest, railStations, cities, cityByName, stations, landClass: lc, landW: GW, landH: GH, land,
+  return { meta, WORLD, roads, trafficRoads, terrainHeight, bridgeBarrier, rails, railsInRect, railNearest, railStations, cities, cityByName, stations, landClass: lc, landW: GW, landH: GH, land,
     heightAt, naturalHeight, baseHeight: heightAt, nearestRoad, snapToRoad, roadPoint, roadsInRect, buildingsNear, buildingsInRect, groundColor, surfaceAt,
     nearestCity, cityAt, isStreet: () => false, coastDx: () => 99999, hills: [], rivers: [], coast: [[0, 0], [0, 1]], landmarks: [], buildings: [], BLOCK: 64, STREET_HALF: 3.5 };
 }

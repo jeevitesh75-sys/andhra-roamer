@@ -75,3 +75,6 @@ canvas#bigcanvas{touch-action:none;cursor:grab}#minimap{pointer-events:auto;curs
 @keyframes pulse{from{background:rgba(160,20,20,.88)}to{background:rgba(30,60,160,.88)}}
 .hintTap{font-size:12px;color:var(--mut);margin-right:auto}
 .is-touch #wpBox{top:8px;left:46%}.is-touch #wanted{top:44px}
+
+.fire{background:#b3261e!important;color:#fff;font-weight:700}
+#game{touch-action:none}

@@ -33,6 +33,10 @@ export class AudioFX {
     g.gain.setValueAtTime(Math.min(0.8, 0.2 + power * 0.06), c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.6);
     s.connect(f); f.connect(g); g.connect(this.master); s.start(); s.stop(c.currentTime + 0.65);
   }
+  shot() {
+    if (!this.ctx) return; const c = this.ctx, s = c.createBufferSource(); s.buffer = this.noiseBuf; const g = c.createGain(), f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 900;
+    g.gain.setValueAtTime(0.35, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.12); s.connect(f); f.connect(g); g.connect(this.master); s.start(); s.stop(c.currentTime + 0.14);
+  }
   chime() {
     if (!this.ctx) return; const c = this.ctx, t = c.currentTime;
     [660, 880, 1320].forEach((fr, i) => { const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = fr; g.gain.setValueAtTime(0, t + i * 0.12);

@@ -142,13 +142,18 @@ function initInput() {
     else if (k === 'KeyX') cancelJob();
     else if (k === 'Tab') { $('players').hidden = false; renderPlayers(); }
     else if (k === 'KeyH') { G.audio.horn(G.veh.type); }
+    else if (k === 'KeyG') e.preventDefault();
   });
   addEventListener('keyup', e => { G.keys[e.code] = false; if (e.code === 'Tab') $('players').hidden = true; });
   addEventListener('blur', () => { G.keys = {}; });
-  let drag = false, lx = 0, ly = 0;
-  $('game').addEventListener('mousedown', e => { drag = true; lx = e.clientX; ly = e.clientY; });
-  addEventListener('mouseup', () => { drag = false; G.lastDrag = performance.now(); });
-  addEventListener('mousemove', e => { if (!drag) return; G.orbit -= (e.clientX - lx) * 0.006; G.orbitY = clamp(G.orbitY + (e.clientY - ly) * 0.02, -1, 5); lx = e.clientX; ly = e.clientY; G.lastDrag = performance.now(); });
+  { const look = new Map(); let pinch = 0;
+    const cvs = $('game');
+    cvs.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return; look.set(e.pointerId, { x: e.clientX, y: e.clientY }); try { cvs.setPointerCapture(e.pointerId); } catch (_) {} G.looking = true; });
+    const up = e => { look.delete(e.pointerId); if (!look.size) { G.looking = false; G.lastDrag = performance.now(); } };
+    cvs.addEventListener('pointerup', up); cvs.addEventListener('pointercancel', up);
+    cvs.addEventListener('contextmenu', e => e.preventDefault());
+    cvs.addEventListener('pointermove', e => { const p = look.get(e.pointerId); if (!p) return; const k = e.pointerType === 'mouse' ? 0.006 : 0.008; G.orbit -= (e.clientX - p.x) * k; G.orbitY = clamp(G.orbitY + (e.clientY - p.y) * 0.03, -2.5, 9); p.x = e.clientX; p.y = e.clientY; G.lastDrag = performance.now(); G.freeLook = true; });
+  }
   $('game').addEventListener('wheel', e => { G.zoom = clamp(G.zoom * (e.deltaY > 0 ? 1.08 : 0.92), 0.6, 1.9); }, { passive: true });
   addEventListener('resize', () => G.scene && G.scene.resize());
   // minimap zoom: tap / wheel / + -
@@ -269,21 +274,50 @@ function resetToRoad(free) {
 /* ------------------------------------------------------------ simulation */
 function onHit(ev) {
   G.audio.crash(); G.veh.impact = Math.max(G.veh.impact || 0, 4);
-  if (ev.kind === 'human') { toast('You hit a pedestrian! The police are after you - escape!', 4500); if (!G.police.active && G.police.start(G.veh)) G.sirenT = 0; }
+  if (ev.kind === 'human') { toast('You hit a pedestrian! The police are after you - escape!', 4500); if (!G.police.active) { if (G.police.start(G.veh, 1)) G.sirenT = 0; } else G.police.raise(G.veh, 1); }
   else { const fine = ev.kind === 'cow' ? 150 : ev.kind === 'goat' ? 80 : 50, paid = Math.min(G.money, fine); G.money -= paid; toast(`You hit a ${ev.kind}! Fine ${rs(paid)}`, 3000); }
 }
 function policeResult(res) {
-  G.scene.removeModel('pol');
+  for (const k of [...G.scene.models.keys()]) if (k.startsWith('pol')) G.scene.removeModel(k);
   if (res === 'escaped') toast('You escaped the police!', 3500);
+  else if (res === 'cleared') toast('All police units wrecked. You are clear!', 3500);
   else { const fine = Math.min(G.money, 1500); G.money -= fine; G.veh.vx = G.veh.vz = 0; toast(`Caught by the police! Fine ${rs(fine)}`, 4500); }
 }
 function setWaypoint(p) { G.wp = p; G.scene.setWaypoint(p); if (p) toast('Pin set - follow the blue arrow', 2000); }
 
+
+function gunFrame(dt, me, pose, v) {
+  const gun = G.scene.attachGun(me, v.type), yaw = G.aimYaw ?? pose.h, pit = G.aimPitch || 0;
+  G.scene.aimGun(me, yaw, pit, pose.h); G.scene.tickFx(dt); G.gunCd = Math.max(0, (G.gunCd || 0) - dt);
+  if (!(G.keys.KeyG || G.touch.fire) || G.gunCd > 0 || G.paused) return;
+  G.gunCd = 0.11; G.audio.shot(); G.scene.gunFlash(me);
+  const ox = pose.x + Math.sin(pose.h) * gun.z * 1 + 0, oy = pose.y + gun.muzzleH, oz = pose.z + Math.cos(pose.h) * gun.z;
+  const dx = Math.sin(yaw) * Math.cos(pit), dy = Math.sin(pit), dz = Math.cos(yaw) * Math.cos(pit), RANGE = 160;
+  let best = RANGE, hit = null;
+  const test = (x, y, z, r, fn) => { const rx = x - ox, ry = y - oy, rz = z - oz, t = rx * dx + ry * dy + rz * dz; if (t < 1 || t > best) return; const cx = ox + dx * t - x, cy = oy + dy * t - y, cz = oz + dz * t - z; if (cx * cx + cy * cy + cz * cz < r * r) { best = t; hit = fn; } };
+  G.police.cars.forEach((P, i) => { if (P.hp > 0) test(P.car.x, (P.car.y || 0) + 1, P.car.z, 2.4, () => { if (G.police.damage(i, 25)) { toast('Police unit destroyed!', 1500); G.audio.crash(3); } }); });
+  for (const e of G.crowd.list) if (e.state !== 'hit') test(e.x, (e.lift || 0) + 0.9, e.z, e.kind === 'human' ? 0.6 : 0.7, () => {
+    e.state = 'hit'; e.t = 0; e.vy = 3; e.hx = dx * 4; e.hz = dz * 4; e.spin = 3;
+    if (e.kind === 'human') { toast('You shot a pedestrian! Wanted level up', 2500); if (!G.police.active) G.police.start(G.veh, 2); else if (!G.wantedCd || performance.now() > G.wantedCd) { G.police.raise(G.veh, 1); G.wantedCd = performance.now() + 4000; } } });
+  const ex = ox + dx * best, ey = oy + dy * best, ez = oz + dz * best;
+  G.scene.tracer(ox + dx * 1.5, oy + dy * 1.5, oz + dz * 1.5, ex, ey, ez); if (hit) hit();
+}
+function policeBump(v) {
+  if (!G.police.active) return;
+  for (const P of G.police.cars) {
+    const c = P.car, dx = v.x - c.x, dz = v.z - c.z, d = Math.hypot(dx, dz), rr = v.spec.wid * 0.5 + c.spec.wid * 0.5 + (v.spec.len + c.spec.len) * 0.22;
+    if (d < rr && d > 0.01) {
+      const nx = dx / d, nz = dz / d, rel = (v.vx - c.vx) * nx + (v.vz - c.vz) * nz, push = (rr - d) * 0.5;
+      v.x += nx * push; v.z += nz * push; c.x -= nx * push; c.z -= nz * push;
+      if (rel < 0) { const j = -1.2 * rel * 0.5; v.vx += nx * j; v.vz += nz * j; c.vx -= nx * j; c.vz -= nz * j; v.impact = Math.max(v.impact || 0, -rel); if (-rel > 6 && P.hp > 0) G.police.damage(G.police.cars.indexOf(P), -rel * 2); }
+    }
+  }
+}
 function stepSim(dt) {
   const v = G.veh, inp = readInput(dt);
   v.step(dt, inp);
   for (const ev of G.crowd.update(dt, v)) onHit(ev);
-  { const res = G.police.update(dt, v); if (res) policeResult(res); }
+  { const res = G.police.update(dt, v); if (res) policeResult(res); policeBump(v); }
   // soft collisions with ambient traffic
   const np = G.scene.npcPos;
   for (let i = 0; i < np.length; i++) {
@@ -325,12 +359,12 @@ function updateCamera(dt, pose) {
   } else {
     let target = pose.h; if (v.speed > 4 && v.u > 0) target = lerpAngle(pose.h, Math.atan2(v.vx, v.vz), 0.3);
     G.camYaw = lerpAngle(G.camYaw, target, 1 - Math.exp(-3.4 * dt));
-    if (now - (G.lastDrag || 0) > 1600) { G.orbit *= Math.exp(-2.4 * dt); G.orbitY *= Math.exp(-2 * dt); }
-    const yaw = G.camYaw + G.orbit, mul = (G.camMode === 1 ? 1.7 : 1) * G.zoom, dist = cfg.dist * mul;
+    if (!G.looking && now - (G.lastDrag || 0) > 4500 && v.speed > 3) { G.orbit -= Math.round(G.orbit / 6.2832) * 6.2832; G.orbit *= Math.exp(-2.4 * dt); G.orbitY *= Math.exp(-2 * dt); }
+    const yaw = G.camYaw + G.orbit; G.aimYaw = yaw; G.aimPitch = clamp(-G.orbitY * 0.05, -0.3, 0.6); const mul = (G.camMode === 1 ? 1.7 : 1) * G.zoom, dist = cfg.dist * mul;
     const tx = pose.x - Math.sin(yaw) * dist, tz = pose.z - Math.cos(yaw) * dist, ty = pose.y + cfg.h * mul * 0.9 + G.orbitY;
     if (!G.camInit || v.teleported) { px = tx; py = ty; pz = tz; G.camInit = true; } else { const k = 1 - Math.exp(-11 * dt); px = cam.position.x + (tx - cam.position.x) * k; py = cam.position.y + (ty - cam.position.y) * k; pz = cam.position.z + (tz - cam.position.z) * k; }
     py = Math.max(py, G.world.heightAt(px, pz) + 1.4);
-    lx = pose.x + Math.sin(pose.h) * cfg.look; lz = pose.z + Math.cos(pose.h) * cfg.look; ly = pose.y + cfg.lookH;
+    lx = pose.x + Math.sin(yaw) * cfg.look; lz = pose.z + Math.cos(yaw) * cfg.look; ly = pose.y + cfg.lookH - G.orbitY * 0.35;
   }
   if (G.shake > 0.01) { px += (Math.random() - 0.5) * G.shake; py += (Math.random() - 0.5) * G.shake; pz += (Math.random() - 0.5) * G.shake; }
   cam.position.set(px, py, pz); cam.lookAt(lx, ly, lz);
@@ -376,7 +410,7 @@ function updateHud(dt, info, serverSec) {
   const { city, dist } = nearestCityInfo(), nr = G.world.nearestRoad(v.x, v.z), onRoad = nr && nr.d < nr.halfW + 3 ? nr.road.ref : '';
   $('where').textContent = dist < city.R ? `${city.name}${city.te ? ' · ' + city.te : ''}` : `${(dist * 0.001).toFixed(1)} km from ${city.name}${onRoad ? ' · ' + onRoad : ''}`;
   { const wp = G.wp, box = $('wpBox'); box.hidden = !wp; if (wp) { const d = Math.hypot(wp.x - v.x, wp.z - v.z); if (d < 25) { setWaypoint(null); toast('You have arrived!', 2500); } else { $('wpDist').textContent = d > 1000 ? `${(d * 0.001).toFixed(1)} km` : `${Math.round(d)} m`; $('wpArrow').style.transform = `rotate(${-(Math.atan2(wp.x - v.x, wp.z - v.z) - v.h) * 57.2958}deg)`; } }
-    const pol = G.police.active; $('wanted').hidden = !pol; if (pol) { const c = G.police.car; $('wantedTxt').textContent = `POLICE CHASE - ${Math.round(Math.hypot(c.x - v.x, c.z - v.z))} m behind. Get away!`; } }
+    const pol = G.police.active; $('wanted').hidden = !pol; if (pol) { const c = G.police.car; $('wantedTxt').textContent = `${'★'.repeat(G.police.stars)}${'☆'.repeat(5 - G.police.stars)}  POLICE - ${G.police.cars.filter(x => x.hp > 0).length} unit(s), nearest ${Math.round(Math.hypot(c.x - v.x, c.z - v.z))} m`; } }
   const r = G.runner; $('jobPanel').hidden = !r; $('arrowBox').hidden = !r;
   if (r) {
     const t = r.target, d = Math.hypot(t.x - v.x, t.z - v.z), ang = Math.atan2(t.x - v.x, t.z - v.z) - v.h;
@@ -407,8 +441,10 @@ function frame(now) {
   G.scene.placeModel(me, { ...pose, brake: v.brakeLit, lights: lightsOn, reverse: v.reversing, ax: v.ax, ay: v.ay, signed: v.u });
   G.scene.setHeadlight(lightsOn && info.night, { x: pose.x, y: pose.y, z: pose.z, h: pose.h }, v.spec);
   G.scene.updatePeds(G.crowd.list);
-  if (G.police.active) { const c = G.police.car, m = G.scene.model('pol', 'car', '#1d3a8a'); G.scene.placeModel(m, { x: c.x, z: c.z, y: c.y || 0, h: c.h, pitch: c.pitch || 0, roll: c.roll || 0, steer: c.steerAngle || 0, brake: c.brakeLit, lights: true, reverse: c.reversing, signed: c.u });
-    if ((G.sirenT = (G.sirenT || 0) - dt) < 0) { G.sirenT = 0.9; G.audio.chime(); } } else if (G.scene.models.has('pol')) G.scene.removeModel('pol');
+  { const live = new Set(); if (G.police.active) for (const P of G.police.cars) { const c = P.car; live.add(P.id); const pm = G.scene.model(P.id, P.swat ? 'bus' : 'car', P.swat ? '#111827' : '#1d3a8a'); G.scene.placeModel(pm, { x: c.x, z: c.z, y: c.y || 0, h: c.h, pitch: c.pitch || 0, roll: c.roll || 0, steer: c.steerAngle || 0, brake: c.brakeLit, lights: true, reverse: c.reversing, signed: c.u }); pm.group.rotation.z += P.hp <= 0 ? 0.5 : 0; }
+    for (const k of [...G.scene.models.keys()]) if (k.startsWith('pol') && !live.has(k)) G.scene.removeModel(k);
+    if (G.police.active && (G.sirenT = (G.sirenT || 0) - dt) < 0) { G.sirenT = 0.9; G.audio.chime(); } }
+  gunFrame(dt, me, pose, v);
   updateRemotes(); updateCamera(dt, pose); G.scene.render();
   const flags = (v.brakeLit ? FLAG.BRAKE : 0) | (lightsOn ? FLAG.LIGHTS : 0) | (G.keys.KeyH ? FLAG.HORN : 0) | (v.reversing ? FLAG.REVERSE : 0);
   if (G.net) G.net.sendState(v, flags);

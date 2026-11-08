@@ -22,9 +22,9 @@ const ev = crowd.update(1 / 60, v); ok(ev.some(e => e.type === 'hit' && e.kind =
 const hit = crowd.list.find(e => e.state === 'hit'); for (let i = 0; i < 90; i++) crowd.update(1 / 60, v);
 ok(hit && hit.lie > 0.9 && hit.lift === 0, 'victim ends up lying on the ground');
 // police chase
-const pol = new Police(w); ok(pol.start(v), 'police spawned on a road'); const c0 = Math.hypot(pol.car.x - v.x, pol.car.z - v.z);
+const pol = new Police(w); ok(pol.start(v, 1), 'police spawned on a road'); const c0 = Math.hypot(pol.car.x - v.x, pol.car.z - v.z);
 v.reset(sp.x, sp.z, sp.h); let res = null, minD = 1e9;
-for (let i = 0; i < 60 * 70 && !res; i++) { v.step(1 / 60, { throttle: 0, steer: 0, brake: 1, handbrake: false }); res = pol.update(1 / 60, { x: v.x, z: v.z, speed: 0 }); minD = Math.min(minD, Math.hypot(pol.car.x - v.x, pol.car.z - v.z)); }
+for (let i = 0; i < 60 * 70 && !res; i++) { v.step(1 / 60, { throttle: 0, steer: 0, brake: 1, handbrake: false }); res = pol.update(1 / 60, { x: v.x, z: v.z, speed: 0 }); if (pol.car) minD = Math.min(minD, Math.hypot(pol.car.x - v.x, pol.car.z - v.z)); }
 console.log('police start distance', c0.toFixed(0), 'closest', minD.toFixed(0), 'result', res);
 ok(res === 'caught' || minD < c0 * 0.5, 'police close in on a stationary player (result ' + res + ')');
 console.log(fails ? 'PEDS TESTS FAILED' : 'PEDS TESTS PASSED'); process.exit(fails ? 1 : 0);

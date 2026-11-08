@@ -23,3 +23,10 @@ Friends join the same room code to drive together.
 `client/src/data.js` holds cities, roads, rivers, coast and hills (real lat/lon) — edit it to reshape the map.
 Optional: put `three.module.js` (r160) in `client/vendor/` to avoid the CDN.
 Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/mesh-jobs-test.mjs`.
+
+## Drop 1 additions
+- Free-look camera: drag (mouse or finger) anywhere on the 3D view to look 360 degrees; it recentres after ~4.5 s idle while driving.
+- Roof gun: hold G or tap FIRE; aims where the camera looks. Shoots police cars (4 hits to wreck), pedestrians and animals (shooting people raises wanted level).
+- Police: up to 3 cars, wanted stars 1-5, ramming/collisions, SWAT van at 4+ stars, follow roads.
+- Bridges: cars drive on the deck (no more falling under the road); parapets stop cars falling into the water.
+- NOT yet included: on-foot exit/enter, 4-player story mode, police stations/motorcycles, voice chat.

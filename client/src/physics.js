@@ -154,6 +154,7 @@ export class Vehicle {
   /** push the vehicle out of buildings (three circles along its length) */
   collide() {
     const s = this.spec, r = s.wid / 2 + 0.15;
+    if (this.world.bridgeBarrier) this.world.bridgeBarrier(this, r);
     const sinH = Math.sin(this.h), cosH = Math.cos(this.h);
     const off = Math.max(0, s.len / 2 - r);
     for (let pass = 0; pass < 2; pass++) {
