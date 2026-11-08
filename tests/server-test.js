@@ -69,6 +69,12 @@ server.listen(0, async () => {
     b.send({ t: 'chat', text: 'hello <b>AP</b>' });
     await sleep(100);
     assert.strictEqual(a.find('chat')[0].text, 'hello bAP/b');
+    // on-foot sync, story relay, voice signalling
+    b.send({ t: 'foot', on: 1, x: 150, z: 250, h: 1, m: 2, a: 0, s: 1 }); await sleep(120);
+    const ft = a.find('foot').pop(); assert(ft && ft.on === 1 && ft.x === 150 && ft.m === 2, 'foot state relayed');
+    b.send({ t: 'st', k: 'adv', ch: 1, i: 2 }); await sleep(250); const stm = a.find('st').pop(); assert(stm && stm.k === 'adv' && stm.ch === 1 && stm.i === 2, 'story relayed');
+    b.send({ t: 'st', k: 'evil', ch: 1 }); await sleep(250); assert(a.find('st').length === 1, 'unknown story kind dropped');
+    const bid = a.find('join')[0] ? a.find('join')[0].p.id : null; a.send({ t: 'rtc', to: bid, d: { k: 'hi' } }); await sleep(100); const rt = b.find('rtc').pop(); assert(rt && rt.d.k === 'hi' && rt.from, 'rtc signalling forwarded to target');
     // garbage must not crash
     a.send({ t: 's', x: 'NaN', z: {} }); a.send({ nonsense: 1 });
     await sleep(100);

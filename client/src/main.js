@@ -2,6 +2,8 @@
 import { SURF } from './geo.js';
 import { loadRegionData, createOsmWorld } from './osmworld.js';
 import { Crowd, Police } from './peds.js';
+import { Story, ROLES, BLURB, CHAPTERS } from './story.js';
+import { Voice } from './voice.js';
 import { Vehicle, SPECS, FIXED_DT, MAX_STEPS } from './physics.js';
 import { Scene3D } from './scene.js';
 import { Net, FLAG } from './net.js';
@@ -87,6 +89,11 @@ async function startGame() {
     const q = G.save.quality || (matchMedia('(max-width: 800px)').matches ? 'low' : 'medium');
     try { G.scene = new Scene3D(G.T, $('game'), G.world, q); } catch (e) { $('ldErr').textContent = 'Graphics failed to start: ' + e.message; console.error(e); return; }
     G.veh = new Vehicle(prof.veh, G.world); G.crowd = new Crowd(G.world); G.police = new Police(G.world); G.wp = null;
+    G.voice = new Voice(G.net, toast);
+    G.story = new Story({ me: () => (G.net && G.net.id) || 0, ids: () => [(G.net && G.net.id) || 0, ...(G.net ? [...G.net.remotes.keys()] : [])].sort((a, b) => a - b),
+      send: o => { if (G.net) G.net.send({ t: 'st', ...o }); }, say: t => toast(t, 3500), reward: n => { G.money += n; G.earned += n; toast('Story reward ' + rs(n), 4000); },
+      police: st => { if (!G.police.active) G.police.start(G.veh, st); else if (G.police.stars < st) G.police.raise(G.veh, st - G.police.stars); G.sirenT = 0; }, stopPolice: () => { if (G.police.active) G.police.stop(); },
+      onStep: (s, mine) => { const p = storyLoc(s.loc); if ((s.t === 'goto' || s.t === 'hack') && mine && p) setWaypoint(p); else if (G.wp && G.storyWp) setWaypoint(null); G.storyWp = (s.t === 'goto' || s.t === 'hack') && mine; G.stKey = ''; } });
     G.money = G.save.money || 0; G.earned = G.save.earned || 0;
     initInput(); initHud();
   } else { G.veh.setType(prof.veh); G.scene.removeModel('me'); }
@@ -103,7 +110,7 @@ async function startGame() {
   G.vehBtns($('garVeh'), v => { G.profile.veh = v; applyVehicleChange(); });
   persist();
   // network
-  if (!G.net) G.net = new Net({ onStatus: onNetStatus, onChat: m => addChat(m.name, m.text), onJoin: r => { toast(r.name + ' joined'); }, onLeave: r => { toast(r.name + ' left'); G.scene.removeModel('r' + r.id); dropTag(r.id); },
+  if (!G.net) G.net = new Net({ onStatus: onNetStatus, onChat: m => addChat(m.name, m.text), onRtc: m => { if (G.voice) G.voice.handle(m); }, onStory: m => { if (G.story && m.id !== G.net.id) G.story.onMsg(m, m.id); }, onJoin: r => { toast(r.name + ' joined'); if (G.voice) G.voice.onJoin(r); }, onLeave: r => { toast(r.name + ' left'); if (G.voice) G.voice.onLeave(r); G.scene.setFoot(null, 'r' + r.id); G.scene.removeModel('r' + r.id); dropTag(r.id); },
     onLeaveAll: () => { for (const k of [...G.scene.models.keys()]) if (k.startsWith('r')) G.scene.removeModel(k); clearTags(); }, onError: m => toast(m, 3500) });
   const url = new URLSearchParams(location.search).get('server') || (window.GAME_CONFIG && window.GAME_CONFIG.SERVER_URL) || '';
   G.net.disconnect();
@@ -144,6 +151,8 @@ function initInput() {
     else if (k === 'KeyH') { G.audio.horn(G.veh.type); }
     else if (k === 'KeyG') e.preventDefault();
     else if (k === 'KeyE') toggleFoot();
+    else if (k === 'KeyO') toggleStory();
+    else if (k === 'KeyB') G.voice && G.voice.toggle().then(on => { G.voiceOn = on; });
   });
   addEventListener('keyup', e => { G.keys[e.code] = false; if (e.code === 'Tab') $('players').hidden = true; });
   addEventListener('blur', () => { G.keys = {}; });
@@ -155,6 +164,7 @@ function initInput() {
     cvs.addEventListener('contextmenu', e => e.preventDefault());
     cvs.addEventListener('pointermove', e => { const p = look.get(e.pointerId); if (!p) return; const k = e.pointerType === 'mouse' ? 0.006 : 0.008; G.orbit -= (e.clientX - p.x) * k; G.orbitY = clamp(G.orbitY + (e.clientY - p.y) * 0.03, -2.5, 9); p.x = e.clientX; p.y = e.clientY; G.lastDrag = performance.now(); G.freeLook = true; });
   }
+  $('story').addEventListener('click', e => { const S = G.story; if (!S) return; const b = e.target.closest('button[data-v]'); if (b) { S.vote(b.dataset.v); $('story').innerHTML = '<p>Vote cast - waiting for the others...</p>'; G.stKey = 'voted'; return; } if (S.done) { S.active = false; S.done = false; $('story').hidden = true; return; } S.tap(); });
   $('game').addEventListener('wheel', e => { G.zoom = clamp(G.zoom * (e.deltaY > 0 ? 1.08 : 0.92), 0.6, 1.9); }, { passive: true });
   addEventListener('resize', () => G.scene && G.scene.resize());
   // minimap zoom: tap / wheel / + -
@@ -182,7 +192,7 @@ function initInput() {
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) G.keys = {}; });
   for (const b of document.querySelectorAll('#touch button')) {
-    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); if (v && k === 'act') toggleFoot(); };
+    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); if (v && k === 'act') toggleFoot(); if (v && k === 'story') toggleStory(); if (v && k === 'voice' && G.voice) G.voice.toggle(); };
     b.addEventListener('touchstart', on(true), { passive: false }); b.addEventListener('touchend', on(false), { passive: false }); b.addEventListener('touchcancel', on(false), { passive: false });
   }
 }
@@ -278,12 +288,20 @@ function onHit(ev) {
   if (ev.kind === 'human') { toast('You hit a pedestrian! The police are after you - escape!', 4500); if (!G.police.active) { if (G.police.start(G.veh, 1)) G.sirenT = 0; } else G.police.raise(G.veh, 1); }
   else { const fine = ev.kind === 'cow' ? 150 : ev.kind === 'goat' ? 80 : 50, paid = Math.min(G.money, fine); G.money -= paid; toast(`You hit a ${ev.kind}! Fine ${rs(paid)}`, 3000); }
 }
-function policeResult(res) {
-  const ls = G.lastStars; 
+function radioSay(t) { const r = $('radio'); r.textContent = '📻 ' + t; r.hidden = false; clearTimeout(G.radioHide); G.radioHide = setTimeout(() => { r.hidden = true; }, 3800); G.audio.radio(); }
+function jailMe() {
+  const w = G.world, v = G.veh, ps = w.policeStations || []; let best = null, bd = 1e12;
+  for (const s of ps) { const d = (s.x - v.x) ** 2 + (s.z - v.z) ** 2; if (d < bd) { bd = d; best = s; } }
+  const pt = best ? { x: best.x, z: best.z } : storyLoc(0), sn = w.snapToRoad(pt.x, pt.z, 120, 7), q = sn ? w.roadPoint(sn.road, sn.s, 3, {}) : { x: pt.x, z: pt.z, h: 0 };
+  v.reset(q.x, q.z, q.h); G.foot = null; G.jail = { t: 7, st: best ? best.name : 'the station' }; G.camInit = false; G.camYaw = q.h;
+}
+function policeResult(res) { policeResult0(res); if (G.story) G.story.policeResult(res); }
+function policeResult0(res) {
+  
   for (const k of [...G.scene.models.keys()]) if (k.startsWith('pol')) G.scene.removeModel(k);
   if (res === 'escaped') toast('You escaped the police!', 3500);
   else if (res === 'cleared') toast('All police units wrecked. You are clear!', 3500);
-  else { const fine = Math.min(G.money, 500 * Math.max(1, G.lastStars || 1)); G.money -= fine; G.veh.vx = G.veh.vz = 0; toast(`Caught by the police! Fine ${rs(fine)}`, 4500); }
+  else { jailMe(); const fine = Math.min(G.money, 500 * Math.max(1, G.lastStars || 1)); G.money -= fine; G.veh.vx = G.veh.vz = 0; toast(`Caught by the police! Fine ${rs(fine)}`, 4500); }
 }
 function setWaypoint(p) { G.wp = p; G.scene.setWaypoint(p); if (p) toast('Pin set - follow the blue arrow', 2000); }
 
@@ -297,7 +315,8 @@ function gunFrame(dt, me, pose, v) {
   const dx = Math.sin(yaw) * Math.cos(pit), dy = Math.sin(pit), dz = Math.cos(yaw) * Math.cos(pit), RANGE = 160;
   let best = RANGE, hit = null;
   const test = (x, y, z, r, fn) => { const rx = x - ox, ry = y - oy, rz = z - oz, t = rx * dx + ry * dy + rz * dz; if (t < 1 || t > best) return; const cx = ox + dx * t - x, cy = oy + dy * t - y, cz = oz + dz * t - z; if (cx * cx + cy * cy + cz * cz < r * r) { best = t; hit = fn; } };
-  G.police.cars.forEach((P, i) => { if (P.hp > 0) test(P.car.x, (P.car.y || 0) + 1, P.car.z, 2.4, () => { if (G.police.damage(i, 25)) { toast('Police unit destroyed! Wanted level up', 1800); G.audio.crash(3); G.police.raise(G.veh, 1); } }); });
+  G.police.cars.forEach((P, i) => { if (P.hp > 0) test(P.car.x, (P.car.y || 0) + 1, P.car.z, 2.4, () => { if (G.police.damage(i, 25)) { toast('Police unit destroyed! Wanted level up', 1800); G.audio.crash(3); if (!(G.story && G.story.active)) G.police.raise(G.veh, 1); if (G.story) G.story.kill(); } }); });
+  G.police.cops.forEach((c, i) => test(c.x, 0.9, c.z, 0.6, () => { if (G.police.killCop(i)) { G.police.raise(G.veh, 1); G.audio.crash(2); } }));
   for (const e of G.crowd.list) if (e.state !== 'hit') test(e.x, (e.lift || 0) + 0.9, e.z, e.kind === 'human' ? 0.6 : 0.7, () => {
     e.state = 'hit'; e.t = 0; e.vy = 3; e.hx = dx * 4; e.hz = dz * 4; e.spin = 3;
     if (e.kind === 'human') { toast('You shot a pedestrian! Wanted level up', 2500); if (!G.police.active) G.police.start(G.veh, 2); else if (!G.wantedCd || performance.now() > G.wantedCd) { G.police.raise(G.veh, 1); G.wantedCd = performance.now() + 4000; } } });
@@ -323,7 +342,7 @@ function findExitSpot() {
   return null;
 }
 function toggleFoot() {
-  if (G.paused || modalOpen() || typing() || (G.foot && G.foot.anim)) return; const v = G.veh;
+  if (G.paused || G.jail || modalOpen() || typing() || (G.foot && G.foot.anim)) return; const v = G.veh;
   if (!G.foot) {
     if (v.speed > 4) { toast('Stop the vehicle first to get out', 1800); return; }
     const sp = findExitSpot(); if (!sp) { toast('No safe place to get out here', 2000); return; }
@@ -354,6 +373,27 @@ function footStep(dt) {
   }
   footProxy.x = f.x; footProxy.z = f.z; footProxy.h = f.h; footProxy.speed = 0;
 }
+
+/* ------------------------------------------------ story UI */
+function storyLoc(i) { if (i === undefined || !G.world) return null; if (typeof i === 'object') { const ps = G.world.policeStations || []; const s = ps[i.police % Math.max(1, ps.length)]; return s ? { x: s.x, z: s.z } : storyLoc(0); } const c = G.world.cities; const city = c[i % c.length]; return city ? (city.spawn ? { x: city.spawn.x, z: city.spawn.z } : { x: city.x, z: city.z }) : null; }
+function toggleStory() {
+  const S = G.story; if (!S) return;
+  if (S.active) { if (S.done) { S.active = false; S.done = false; return; } if (confirm('Quit the story?')) { S.stop(); } return; }
+  S.start(); toast(`ANDHRA UNDERWORLD - you are ${S.role()}. ${BLURB[S.role()]}`, 5000);
+}
+function storyUI() {
+  const S = G.story, box = $('story'), obj = $('stObj'); if (!S || !S.active) { box.hidden = true; obj.hidden = true; return; }
+  const s = S.step, ids = S.h.ids().length, key = [S.ch, S.i, S.done, S.mine(s), ids, S.flags.trust].join('|');
+  if (G.stKey !== key) { G.stKey = key; let h = '';
+    if (s.t === 'talk') h = `<div class="stT">${CHAPTERS[S.ch].title}</div><b>${s.by}</b><p>${s.text}</p><small>tap to continue</small>`;
+    else if (s.t === 'decide') h = `<div class="stT">${CHAPTERS[S.ch].title}</div><p>${s.q}</p><div class="stB">${s.opts.filter(o => S._allowed(o)).map(o => `<button data-v="${o[0]}">${o[1]}</button>`).join('')}</div><small id="stVotes"></small>`;
+    else if (s.t === 'end') h = `<div class="stT">THE END</div><b>${s.title}</b><p>${s.text}</p><small>tap to close</small>`;
+    box.innerHTML = h; box.hidden = !h; box.dataset.t = s.t; }
+  if (s.t === 'decide') { const v = $('stVotes'); if (v) v.textContent = `Votes ${Object.keys(S.votes).length}/${ids} - majority wins (25 s)`; }
+  let t = ''; if (s.t !== 'talk' && s.t !== 'decide' && s.t !== 'end') { const who = s.who && !S.mine(s) ? `Waiting for ${s.who}: ` : `${S.role()} · `; t = who + s.text;
+    if (s.t === 'hack') t += ` [${Math.floor(100 * S.prog / s.secs)}%]`; if (s.t === 'defeat') t += ` [${S.kills}/${s.n}]`; }
+  obj.hidden = !t; obj.textContent = t;
+}
 function policeBump(v) {
   if (!G.police.active) return;
   for (const P of G.police.cars) {
@@ -361,13 +401,13 @@ function policeBump(v) {
     if (d < rr && d > 0.01) {
       const nx = dx / d, nz = dz / d, rel = (v.vx - c.vx) * nx + (v.vz - c.vz) * nz, push = (rr - d) * 0.5;
       v.x += nx * push; v.z += nz * push; c.x -= nx * push; c.z -= nz * push;
-      if (rel < 0) { const j = -1.2 * rel * 0.5; v.vx += nx * j; v.vz += nz * j; c.vx -= nx * j; c.vz -= nz * j; v.impact = Math.max(v.impact || 0, -rel); if (-rel > 6 && P.hp > 0) G.police.damage(G.police.cars.indexOf(P), -rel * 2); }
+      if (rel < 0) { const j = -1.2 * rel * 0.5; v.vx += nx * j; v.vz += nz * j; c.vx -= nx * j; c.vz -= nz * j; v.impact = Math.max(v.impact || 0, -rel); if (-rel > 6 && P.hp > 0 && G.police.damage(G.police.cars.indexOf(P), -rel * 2) && G.story) G.story.kill(); }
     }
   }
 }
 function stepSim(dt) {
-  const v = G.veh, inp = G.foot ? PARK : readInput(dt);
-  v.step(dt, inp); footStep(dt); const tg = G.foot ? footProxy : v;
+  const v = G.veh; if (G.jail && (G.jail.t -= dt) <= 0) { G.jail = null; toast('Released. Stay out of trouble!', 2500); } const inp = (G.foot || G.jail) ? PARK : readInput(dt);
+  v.step(dt, inp); footStep(dt); const tg = G.foot ? footProxy : v; if (G.story) G.story.update(dt, tg, storyLoc);
   for (const ev of G.crowd.update(dt, tg)) onHit(ev);
   { if (G.police.active) G.lastStars = G.police.stars; const res = G.police.update(dt, tg); if (res) policeResult(res); policeBump(v); }
   // soft collisions with ambient traffic
@@ -437,6 +477,7 @@ function updateRemotes() {
     const m = sc.model('r' + id, r.veh, r.color);
     sc.placeModel(m, { x: s.x, z: s.z, y: (fy + by) / 2, h: s.h, pitch: Math.atan((fy - by) / spec.wheelbase), roll: 0, steer: s.st * spec.maxSteer, brake: s.f & FLAG.BRAKE, lights: s.f & FLAG.LIGHTS, reverse: s.f & FLAG.REVERSE, signed: s.v });
     const d = Math.hypot(s.x - me.x, s.z - me.z);
+    { const f = r.foot; if (f && f.on && performance.now() - f.t < 2500) { r.fp = r.fp || { x: f.x, z: f.z, h: f.h }; r.fp.x += (f.x - r.fp.x) * 0.3; r.fp.z += (f.z - r.fp.z) * 0.3; r.fp.h = f.h; G.scene.setFoot({ x: r.fp.x, y: w.heightAt(r.fp.x, r.fp.z) + (f.a ? 0.7 : 0), z: r.fp.z, h: r.fp.h, s: f.s || 1, phase: (performance.now() / 1000) * (f.m > 1 ? 12 : 8), moving: f.m > 1 ? 1.3 : f.m ? 0.8 : 0, air: f.a, c1: r.color }, 'r' + id); } else r.fp = null; }
     if (s.f & FLAG.HORN) { if (!r.horn) { r.horn = true; if (d < 400) G.audio.horn(r.veh, 0.18 * clamp(1 - d / 400, 0.05, 1)); } } else r.horn = false;
     updateTag(id, r, s, (fy + by) / 2 + spec.wid + 1.6, d);
   }
@@ -496,15 +537,19 @@ function frame(now) {
   G.scene.placeModel(me, { ...pose, brake: v.brakeLit, lights: lightsOn, reverse: v.reversing, ax: v.ax, ay: v.ay, signed: v.u });
   G.scene.setHeadlight(lightsOn && info.night, { x: pose.x, y: pose.y, z: pose.z, h: pose.h }, v.spec);
   G.scene.updatePeds(G.crowd.list);
-  { const live = new Set(); if (G.police.active) for (const P of G.police.cars) { const c = P.car; live.add(P.id); const pm = G.scene.model(P.id, P.swat ? 'bus' : 'car', P.swat ? '#111827' : '#1d3a8a'); G.scene.placeModel(pm, { x: c.x, z: c.z, y: c.y || 0, h: c.h, pitch: c.pitch || 0, roll: c.roll || 0, steer: c.steerAngle || 0, brake: c.brakeLit, lights: true, reverse: c.reversing, signed: c.u }); pm.group.rotation.z += P.hp <= 0 ? 0.5 : 0; }
+  { const live = new Set(); if (G.police.active) for (const P of G.police.cars) { const c = P.car; live.add(P.id); const pm = G.scene.model(P.id, P.swat ? 'bus' : P.bike ? 'bike' : 'car', P.swat ? '#111827' : '#1d3a8a'); G.scene.placeModel(pm, { x: c.x, z: c.z, y: c.y || 0, h: c.h, pitch: c.pitch || 0, roll: c.roll || 0, steer: c.steerAngle || 0, brake: c.brakeLit, lights: true, reverse: c.reversing, signed: c.u }); pm.group.rotation.z += P.hp <= 0 ? 0.5 : 0; }
     for (const k of [...G.scene.models.keys()]) if (k.startsWith('pol') && !live.has(k)) G.scene.removeModel(k);
     if (G.police.active && (G.sirenT = (G.sirenT || 0) - dt) < 0) { G.sirenT = 0.9; G.audio.chime(); } }
-  gunFrame(dt, me, pose, v);
+  gunFrame(dt, me, pose, v); storyUI();
+  if (G.police.active) G.police.cops.forEach((c, i) => G.scene.setFoot({ x: c.x, y: G.world.heightAt(c.x, c.z), z: c.z, h: c.h, s: 1, phase: c.phase, moving: c.moving, c1: '#1d3a8a', skin: '#a9744f' }, 'c' + i));
+  { const q = G.police.say; if (q.length) { if (!G.radioT || performance.now() > G.radioT) { const line = q.shift(); G.radioT = performance.now() + 2600; radioSay(line); } if (q.length > 6) q.splice(0, q.length - 6); } }
+  { const j = $('busted'); j.hidden = !G.jail; if (G.jail) j.textContent = `BUSTED! In custody at ${G.jail.st} - ${Math.ceil(G.jail.t)} s`; }
   if (G.foot) G.scene.setFoot({ x: G.foot.x, y: G.foot.y, z: G.foot.z, h: G.foot.h, s: G.foot.s, phase: G.foot.phase, moving: G.foot.moving, air: G.foot.lift > 0.15, c1: G.profile.color }); else G.scene.setFoot(null);
   { const ab = $('actBtn'), fb = document.querySelector('.fire'), foot = !!G.foot; if (ab && G.lastFoot !== foot) { G.lastFoot = foot; ab.innerHTML = foot ? '🚗<br>ENTER' : '🚪<br>EXIT'; if (fb) fb.innerHTML = foot ? '⬆<br>JUMP' : '🔫<br>FIRE'; } }
-  updateRemotes(); updateCamera(dt, pose); G.scene.render();
+  updateRemotes(); G.scene.pruneFoots(); updateCamera(dt, pose); G.scene.render();
   const flags = (v.brakeLit ? FLAG.BRAKE : 0) | (lightsOn ? FLAG.LIGHTS : 0) | (G.keys.KeyH ? FLAG.HORN : 0) | (v.reversing ? FLAG.REVERSE : 0);
-  if (G.net) G.net.sendState(v, flags);
+  if (G.net) { G.net.sendState(v, flags);
+    const tn = performance.now(); if (G.foot) { if (tn - (G.footSend || 0) > 100) { G.footSend = tn; G.net.sendFoot({ on: 1, x: G.foot.x, z: G.foot.z, h: G.foot.h, m: G.foot.moving > 1 ? 2 : G.foot.moving > 0.3 ? 1 : 0, a: G.foot.lift > 0.15, s: G.foot.s }); G.footWas = true; } } else if (G.footWas) { G.footWas = false; G.net.sendFoot({ on: 0, x: v.x, z: v.z, h: v.h }); } }
   G.audio.update(v.rpm, G.paused ? 0 : Math.max(0, G.keys.KeyW || G.keys.ArrowUp || G.touch.gas ? 1 : 0), v.skid * (v.speed > 3 ? 1 : 0), v.type);
   if ((G.hudT += dt) > 0.066) { G.hudT = 0; updateHud(dt, info, serverSec); }
   if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, cx: v.x, cz: v.z, radius: G.miniR || 650, me: v, target: G.runner && G.runner.target, wp: G.wp, players: remotePins() }); if (!$('bigmap').hidden) drawBigMap(); }

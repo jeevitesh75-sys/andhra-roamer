@@ -215,11 +215,11 @@ export function createOsmWorld(data) {
   const cityByName = new Map(cities.map(c => [c.name, c]));
   const nearestCity = (x, z) => { let best = cities[0], bd = 1e18; for (const c of cities) { const d = (c.x - x) ** 2 + (c.z - z) ** 2; if (d < bd) { bd = d; best = c; } } return { city: best, dist: Math.sqrt(bd) }; };
   const cityAt = (x, z, pad = 0) => { for (const c of cities) if ((c.x - x) ** 2 + (c.z - z) ** 2 < (c.R * 0.5 + pad) ** 2) return c; return null; };
-  const stations = meta.stations || [];
+  const stations = meta.stations || [], policeStations = meta.police || [];
   const trafficRoads = roads.filter(r => r.cls <= 4 && r.len > 500);
 
   const railStations = (meta.rstations || []).map(s => ({ ...s, rail: railNearest(s.x, s.z, 600) }));
-  return { meta, WORLD, roads, trafficRoads, terrainHeight, bridgeBarrier, rails, railsInRect, railNearest, railStations, cities, cityByName, stations, landClass: lc, landW: GW, landH: GH, land,
+  return { meta, WORLD, roads, trafficRoads, terrainHeight, bridgeBarrier, rails, railsInRect, railNearest, railStations, cities, cityByName, stations, policeStations, landClass: lc, landW: GW, landH: GH, land,
     heightAt, naturalHeight, baseHeight: heightAt, nearestRoad, snapToRoad, roadPoint, roadsInRect, buildingsNear, buildingsInRect, groundColor, surfaceAt,
     nearestCity, cityAt, isStreet: () => false, coastDx: () => 99999, hills: [], rivers: [], coast: [[0, 0], [0, 1]], landmarks: [], buildings: [], BLOCK: 64, STREET_HALF: 3.5 };
 }

@@ -37,6 +37,11 @@ export class AudioFX {
     if (!this.ctx) return; const c = this.ctx, s = c.createBufferSource(); s.buffer = this.noiseBuf; const g = c.createGain(), f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 900;
     g.gain.setValueAtTime(0.35, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.12); s.connect(f); f.connect(g); g.connect(this.master); s.start(); s.stop(c.currentTime + 0.14);
   }
+  radio() {
+    if (!this.ctx) return; const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain(), s = c.createBufferSource(), f = c.createBiquadFilter();
+    o.type = 'square'; o.frequency.value = 1500; g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09); o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.1);
+    s.buffer = this.noiseBuf; f.type = 'bandpass'; f.frequency.value = 1800; const g2 = c.createGain(); g2.gain.setValueAtTime(0.12, t + 0.1); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.5); s.connect(f); f.connect(g2); g2.connect(this.master); s.start(t + 0.1); s.stop(t + 0.55);
+  }
   chime() {
     if (!this.ctx) return; const c = this.ctx, t = c.currentTime;
     [660, 880, 1320].forEach((fr, i) => { const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = fr; g.gain.setValueAtTime(0, t + i * 0.12);

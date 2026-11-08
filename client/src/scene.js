@@ -44,7 +44,7 @@ export class Scene3D {
     this.cHorizon = new T.Color(); this.cZenith = new T.Color(); this.cSun = new T.Color(); this.tmpC = new T.Color();
     this.models3d = createModels(T);
     this._textures(); this._materials(); this._sky(); this._lights(); this._water(); this._envMap();
-    this._landmarks(); this._labels(); this._stations(); this._initLamps(); this._initExtras(); this._npcInit(); this._beacon();
+    this._landmarks(); this._labels(); this._stations(); this._policeStations(); this._initLamps(); this._initExtras(); this._npcInit(); this._beacon();
     this.resize();
   }
 
@@ -397,16 +397,27 @@ export class Scene3D {
   }
   removeModel(key) { const m = this.models.get(key); if (!m) return; this.scene.remove(m.group); m.dispose(); this.models.delete(key); }
   /* ---- on-foot character ---- */
-  setFoot(p) {
-    const T = this.T; if (!p) { if (this.foot) { this.scene.remove(this.foot.g); this.foot = null; } return; }
-    if (!this.foot) {
+  setFoot(p, key = 'me') {
+    const T = this.T; if (!this.foots) { this.foots = new Map(); this.footSeen = new Set(); } if (!p) { const o = this.foots.get(key); if (o) { this.scene.remove(o.g); this.foots.delete(key); } return; }
+    this.footSeen.add(key); let ft = this.foots.get(key);
+    if (!ft) {
       const mk = (w, h, d, c) => new T.Mesh(new T.BoxGeometry(w, h, d), new T.MeshStandardMaterial({ color: c })), g = new T.Group(), body = new T.Group(); g.add(body);
       const torso = mk(0.5, 0.7, 0.28, p.c1 || '#2980b9'); torso.position.y = 1.15; const head = new T.Mesh(new T.SphereGeometry(0.15, 10, 8), new T.MeshStandardMaterial({ color: p.skin || '#c68b59' })); head.position.y = 1.67;
       const leg = x => { const pv = new T.Group(); pv.position.set(x, 0.8, 0); const l = mk(0.2, 0.8, 0.22, '#2c3e50'); l.position.y = -0.4; pv.add(l); return pv; }, arm = x => { const pv = new T.Group(); pv.position.set(x, 1.45, 0); const l = mk(0.14, 0.62, 0.16, p.c1 || '#2980b9'); l.position.y = -0.3; pv.add(l); return pv; };
-      const lL = leg(-0.13), lR = leg(0.13), aL = arm(-0.34), aR = arm(0.34); body.add(torso, head, lL, lR, aL, aR); this.scene.add(g); this.foot = { g, body, lL, lR, aL, aR };
+      const lL = leg(-0.13), lR = leg(0.13), aL = arm(-0.34), aR = arm(0.34); body.add(torso, head, lL, lR, aL, aR); this.scene.add(g); ft = { g, body, lL, lR, aL, aR }; this.foots.set(key, ft);
     }
-    const f = this.foot, sw = Math.sin(p.phase || 0) * (p.moving || 0) * 0.9; f.g.position.set(p.x, p.y, p.z); f.g.rotation.y = p.h; f.g.scale.setScalar(p.s || 1);
+    const f = ft, sw = Math.sin(p.phase || 0) * (p.moving || 0) * 0.9; f.g.position.set(p.x, p.y, p.z); f.g.rotation.y = p.h; f.g.scale.setScalar(p.s || 1);
     f.lL.rotation.x = sw; f.lR.rotation.x = -sw; f.aL.rotation.x = -sw * 0.8; f.aR.rotation.x = sw * 0.8; f.body.rotation.x = (p.moving || 0) * 0.08; if (p.air) { f.lL.rotation.x = -0.6; f.lR.rotation.x = 0.4; f.aL.rotation.x = f.aR.rotation.x = -2.2; }
+  }
+  /** call once per frame after all setFoot calls: removes characters that were not updated */
+  pruneFoots() { if (!this.foots) return; for (const k of [...this.foots.keys()]) if (!this.footSeen.has(k)) { this.scene.remove(this.foots.get(k).g); this.foots.delete(k); } this.footSeen.clear(); }
+  _policeStations() {
+    const T = this.T, L = this.world.policeStations || []; if (!L.length) return;
+    const tex = this._canvasTex(256, 100, (x, w, h) => { x.fillStyle = '#1d4ed8'; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.font = '800 56px system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('POLICE', w / 2, h / 2 + 3); });
+    const mk = (geo, mat, y, dx, dz) => { const im = new T.InstancedMesh(geo, mat, L.length), d = new T.Object3D(); L.forEach((s, i) => { d.position.set(s.x + dx, y, s.z + dz); d.updateMatrix(); im.setMatrixAt(i, d.matrix); }); im.instanceMatrix.needsUpdate = true; im.frustumCulled = false; this.scene.add(im); return im; };
+    mk(new T.CylinderGeometry(0.25, 0.25, 10, 8), new T.MeshStandardMaterial({ color: 0x777777 }), 5, 5, 5);
+    mk(new T.BoxGeometry(5.2, 2, 0.4), new T.MeshStandardMaterial({ color: 0xffffff, map: tex, emissive: 0x1d4ed8, emissiveIntensity: 0.25 }), 10.2, 5, 5);
+    mk(new T.BoxGeometry(0.9, 0.5, 0.9), new T.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff2222, emissiveIntensity: 1.2 }), 11.7, 5, 5);
   }
   /* ---- roof gun + tracers ---- */
   attachGun(m, type) {

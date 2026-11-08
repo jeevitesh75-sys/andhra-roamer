@@ -35,3 +35,15 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - Buttons: FIRE/EXIT-ENTER moved to their own pad left of GAS; side menu is a 2x2 grid (no overlaps).
 - On foot: E (or EXIT/ENTER button) leaves the vehicle to a safe spot (not in walls/water/other vehicles); WASD walk, Shift run, Space/JUMP jump, drag to look; E near your vehicle to get back in. Vehicle stays parked; other players see the parked vehicle (their view of your character is not synced yet).
 - Police by stars: 1 patrol (slower than you), 2 two faster cars, 3 + roadblocks ahead of you, 4 + SWAT van, 5 five units, fastest, 2 SWAT. Wrecked units are replaced, destroying one adds a star, escape distance grows with stars, fine = Rs 500 x stars.
+
+## Drop 3 - Story: ANDHRA UNDERWORLD - THE FOUR
+Press O (or the STORY button) to start. 6 chapters, roles assigned by join order (Mastermind, Driver, Hacker, Inside Man; solo plays all). Tap the cutscene box to continue; decisions are voted by the room (majority, 25 s timeout). Missions: go to place, hack (stay near), escape police, defeat units. Endings: Good / Bad / Secret (secret needs "Trust the Inside Man" in Chapter 4). Progress and votes are relayed by the server ('st' messages) - redeploy the Render server for multiplayer story sync.
+
+## Drop 4
+- Real police stations (OSM amenity=police, 15-21 per region) with a POLICE sign + red beacon, shown on the map (blue P); units are dispatched from them.
+- Police motorcycles (1 from 2 stars, 2 from 4 stars), walking officers that chase on foot (1-4 by stars), SWAT vans, roadblocks.
+- Police radio lines (top of screen + beep), arrest = taken to the nearest station for 7 s plus a fine.
+- Story investigation mission: Chapter 3 hack at a police station.
+- On-foot characters are synced to other players (server 'foot' message); parked vehicles are visible to others.
+- Voice chat: press B or the VOICE button (WebRTC; needs HTTPS + microphone permission; signalling via server 'rtc'). Untested with real devices.
+- Redeploy the Render server (server/server.js changed). Region data (client/data/*) was regenerated with police stations.

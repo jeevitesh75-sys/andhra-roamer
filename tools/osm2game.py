@@ -70,7 +70,7 @@ def minrect(ring):
 
 def hsh(*a): return int(hashlib.md5(repr(a).encode()).hexdigest()[:8], 16)
 
-roads, names, bld, hubs, stations, rails, rstations = [], {}, [], [], [], [], []
+roads, names, bld, hubs, stations, rails, rstations, police = [], {}, [], [], [], [], [], []
 land = Image.new('L', (GW, GH), 0); ld = ImageDraw.Draw(land)
 layers = {}   # class -> list of polygons (so draw order is by priority)
 water_poly, water_lines = [], []
@@ -86,6 +86,13 @@ with open(src) as f:
         line = line.strip().rstrip(',')
         if not line.startswith('{"type":"Feature"'): continue
         ft = json.loads(line); p = ft['properties']; g = ft['geometry']; gt = g['type']; n += 1
+        if p.get('amenity') == 'police' and gt in ('Point', 'Polygon', 'MultiPolygon'):
+            c = g['coordinates']; 
+            while isinstance(c[0], list): c = c[0] if gt != 'Point' and isinstance(c[0][0], list) else (c[0] if isinstance(c[0][0], (int, float)) else c[0])
+            if gt == 'Point': ll = c
+            else:
+                ring = g['coordinates'][0] if gt == 'Polygon' else g['coordinates'][0][0]; ll = [sum(q[0] for q in ring) / len(ring), sum(q[1] for q in ring) / len(ring)]
+            x, z = prj(*ll); police.append({'x': round(x, 1), 'z': round(z, 1), 'name': p.get('name') or 'Police Station'})
         if gt == 'Point':
             pl = p.get('place')
             if pl in ('city', 'town', 'suburb') and p.get('name'):
@@ -180,6 +187,6 @@ for h in sorted(hubs, key=lambda h: -h['tier']):
     seen.add(h['name']); H.append(h)
 H = H[:40]
 meta = {'id': rid, 'name': rname, 'w': round(WIDTH), 'h': round(HEIGHT), 'lat0': N_, 'lon0': W_, 'kx': KX, 'kz': KZ, 'cell': CELL, 'gw': GW, 'gh': GH,
-        'nRoads': len(roads), 'nBld': m, 'hubs': H, 'stations': stations[:400], 'rstations': rstations, 'roadNames': {str(k): v for k, v in names.items()}}
+        'nRoads': len(roads), 'nBld': m, 'hubs': H, 'stations': stations[:400], 'police': police[:200], 'rstations': rstations, 'roadNames': {str(k): v for k, v in names.items()}}
 json.dump(meta, open(f'{out}/{rid}.json', 'w'), ensure_ascii=False, separators=(',', ':'))
 print(rid, 'features', n, 'roads', len(roads), 'buildings', m, 'hubs', len(H), 'stations', len(stations), 'raster', GW, GH, 'runs', len(rc))

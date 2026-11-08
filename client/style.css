@@ -79,3 +79,15 @@ canvas#bigcanvas{touch-action:none;cursor:grab}#minimap{pointer-events:auto;curs
 
 .fire{background:rgba(179,38,30,.75)!important;color:#fff;font-weight:700}
 #game{touch-action:none}
+
+#story{position:absolute;left:50%;transform:translateX(-50%);bottom:96px;width:min(640px,64vw);background:rgba(10,14,24,.88);border:1px solid rgba(255,200,80,.5);border-radius:14px;padding:10px 14px;color:#fff;pointer-events:auto;z-index:20}
+#story b{color:#ffcc55}#story p{margin:4px 0;font-size:15px;line-height:1.35}#story small{opacity:.65}.stT{font-size:11px;letter-spacing:2px;color:#e74c3c;font-weight:800}
+.stB{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.stB button{flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e67e22;color:#fff;font-weight:700;border:0;font-size:14px}
+#stObj{position:absolute;left:50%;transform:translateX(-50%);top:98px;max-width:60vw;background:rgba(10,14,24,.75);color:#ffe29a;border-radius:10px;padding:5px 12px;font-size:13px;text-align:center;z-index:15}
+.is-touch #story{bottom:84px;width:58vw;padding:7px 10px}.is-touch #story p{font-size:13px}.is-touch #stObj{top:84px;font-size:12px}
+[hidden]{display:none!important}
+
+#radio{position:absolute;left:50%;transform:translateX(-50%);top:78px;background:rgba(15,23,42,.9);border:1px solid #38bdf8;color:#bae6fd;border-radius:8px;padding:4px 12px;font:600 13px ui-monospace,monospace;z-index:16;max-width:70vw;text-align:center}
+.is-touch #radio{top:72px;font-size:11px}
+#busted{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);background:rgba(120,0,0,.85);color:#fff;font:800 24px system-ui;padding:14px 26px;border-radius:12px;z-index:30;text-align:center}
+.is-touch #stObj{top:100px}

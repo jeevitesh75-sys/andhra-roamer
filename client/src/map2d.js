@@ -68,6 +68,7 @@ export class MapView {
     }
     // petrol stations
     ctx.fillStyle = '#d63031'; for (const s of w.stations) { const x = X(s.x), z = Z(s.z); if (x < 0 || z < 0 || x > W || z > H) continue; ctx.beginPath(); ctx.arc(x, z, full ? 1.8 : 3, 0, 7); ctx.fill(); }
+    ctx.fillStyle = '#1d4ed8'; for (const s of w.policeStations || []) { const x = X(s.x), z = Z(s.z); if (x < 0 || z < 0 || x > W || z > H) continue; const r = full ? 3 : 4; ctx.fillRect(x - r, z - r, r * 2, r * 2); ctx.fillStyle = '#fff'; ctx.font = `700 ${full ? 7 : 7}px system-ui`; ctx.textAlign = 'center'; ctx.fillText('P', x, z + 2.5); ctx.fillStyle = '#1d4ed8'; }
     // job target
     if (opts.target) {
       const x = X(opts.target.x), z = Z(opts.target.z);

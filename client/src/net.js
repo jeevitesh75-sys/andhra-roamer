@@ -62,6 +62,9 @@ export class Net {
       }
       case 'roster': for (const [id, money] of m.p) { const r = this.remotes.get(id); if (r) r.money = money; } this.h.onRoster && this.h.onRoster(m.p); break;
       case 'chat': this.h.onChat && this.h.onChat(m); { const r = this.remotes.get(m.id); if (r) { r.chat = m.text; r.chatAt = performance.now(); } } break;
+      case 'foot': { const r = this.remotes.get(m.id); if (r) r.foot = { on: !!m.on, x: m.x, z: m.z, h: m.h, m: m.m, a: m.a, s: m.s, t: performance.now() }; break; }
+      case 'rtc': this.h.onRtc && this.h.onRtc(m); break;
+      case 'st': this.h.onStory && this.h.onStory(m); break;
       case 'pong': { const rtt = Date.now() - m.ts; this.rtt = this.rtt ? this.rtt * 0.6 + rtt * 0.4 : rtt; break; }
       case 'error': this.h.onError && this.h.onError(m.msg); break;
       default: break;
@@ -77,6 +80,7 @@ export class Net {
     this.send({ t: 's', x: veh.x, z: veh.z, h: veh.h, v: veh.u, st: veh.steerAngle / (veh.spec.maxSteer || 1), f: flags });
   }
   sendVehicle(veh, color) { this.send({ t: 'veh', veh, color }); }
+  sendFoot(o) { this.send({ t: 'foot', ...o }); }
   sendChat(text) { this.send({ t: 'chat', text }); }
   sendMoney(m) { this.send({ t: 'm', m }); }
 

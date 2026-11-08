@@ -231,6 +231,21 @@ function handle(p, raw) {
       if (text) broadcast(p.room, { t: 'chat', id: p.id, name: p.name, text });
       break;
     }
+    case 'foot': {   // on-foot character state (the parked vehicle keeps being sent by 's')
+      if (!p.room) return; if (now - (p.footAt || 0) < 60) return; p.footAt = now;
+      broadcast(p.room, { t: 'foot', id: p.id, on: m.on ? 1 : 0, x: num(m.x, WORLD_MIN, WORLD_MAX), z: num(m.z, WORLD_MIN, WORLD_MAX), h: num(m.h, -100, 100), m: num(m.m, 0, 2), a: m.a ? 1 : 0, s: num(m.s, 0, 1.5) }, p.id);
+      break;
+    }
+    case 'rtc': {   // WebRTC signalling for voice chat: forwarded to one player in the same room
+      if (!p.room) return; const to = p.room.players.get(num(m.to, 0, 1e9, -1)); const d = JSON.stringify(m.d || null); if (!to || d.length > 6000) return;
+      if (now - (p.rtcAt || 0) < 4) return; p.rtcAt = now; to.conn.send(JSON.stringify({ t: 'rtc', from: p.id, d: m.d })); break;
+    }
+    case 'st': {   // story relay: forwarded to the room with a sanitised payload
+      if (!p.room) return; if (now - (p.stAt || 0) < 150) return; p.stAt = now;
+      const d = { t: 'st', id: p.id, k: String(m.k || '').slice(0, 8) }; if (!['start', 'adv', 'vote', 'res', 'flag'].includes(d.k)) return;
+      d.ch = num(m.ch, 0, 20); d.i = num(m.i, 0, 50); if (m.v !== undefined) d.v = String(m.v).slice(0, 16); if (m.key !== undefined) d.key = String(m.key).slice(0, 16);
+      broadcast(p.room, d); break;
+    }
     case 'm': p.money = Math.floor(num(m.m, 0, 1e9)); break;
     case 'ping': p.conn.send(JSON.stringify({ t: 'pong', ts: num(m.ts, 0, 1e15) })); break;
     default: break;

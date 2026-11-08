@@ -59,6 +59,20 @@ export function createModels(T) {
     return { group: g, body, wheels, ctx, type: 'car', lightOff: 2.1 };
   }
 
+  function buildBike(color) {
+    const g = new T.Group(), body = new T.Group(); g.add(body);
+    const ctx = newCtx(paintMat(color)), wheels = [];
+    box(body, 0.34, 0.34, 1.0, ctx.paint, 0, 0.78, 0.05);                         // tank / fairing
+    box(body, 0.26, 0.2, 0.9, M.plastic, 0, 0.62, -0.55);                          // tail unit
+    box(body, 0.12, 0.5, 0.12, M.chassis, 0, 0.55, 0.85, false).rotation.x = -0.35; // fork
+    box(body, 0.7, 0.05, 0.06, M.chassis, 0, 1.05, 0.7, false);                    // bars
+    box(body, 0.34, 0.6, 0.24, ctx.paint, 0, 1.22, -0.15);                         // rider torso
+    add(body, geo('bikeHead', () => new T.SphereGeometry(0.14, 10, 8)), M.white, 0, 1.64, -0.1);
+    box(body, 0.1, 0.1, 0.06, ctx.head, 0, 0.9, 1.0, false); box(body, 0.1, 0.08, 0.05, ctx.tail, 0, 0.7, -1.02, false);
+    wheel(g, wheels, 0.33, 0.12, 0, 0.33, 0.95, true); wheel(g, wheels, 0.33, 0.14, 0, 0.33, -0.95, false);
+    return { group: g, body, wheels, ctx, type: 'bike', lightOff: 1.0 };
+  }
+
   function buildBus(color) {
     const g = new T.Group(), body = new T.Group(); g.add(body);
     const ctx = newCtx(paintMat(color)), wheels = [];
@@ -105,7 +119,7 @@ export function createModels(T) {
     return { group: g, body, wheels, ctx, type: 'lorry', lightOff: 4.7 };
   }
 
-  const BUILD = { car: buildCar, bus: buildBus, lorry: buildLorry };
+  const BUILD = { car: buildCar, bus: buildBus, lorry: buildLorry, bike: buildBike };
   /** returns a vehicle model handle */
   function create(type, colorHex) {
     const m = BUILD[type](new T.Color(colorHex).getHex());
