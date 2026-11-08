@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0d1b2a">
+<title>Andhra Roamer - Drive Andhra Pradesh</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="loading"><div class="ld-title">ANDHRA ROAMER</div><div id="ldText">Loading engine...</div><div class="bar"><i id="ldBar"></i></div><div id="ldErr"></div></div>
+
+<div id="menu" class="screen" hidden>
+  <div class="card">
+    <h1>ANDHRA ROAMER</h1>
+    <p class="sub">A multiplayer drive through real Andhra Pradesh: Vijayawada-Guntur, Visakhapatnam and Tirupati. Haul cargo, run bus routes, take fares.</p>
+    <label>Driver name<input id="name" maxlength="16" placeholder="Your name" autocomplete="off"></label>
+    <div class="row3" id="vehPick">
+      <button data-veh="car"><span>🚗</span>Hatchback<small>Taxi fares</small></button>
+      <button data-veh="bus"><span>🚌</span>Bus<small>Passenger routes</small></button>
+      <button data-veh="lorry"><span>🚛</span>Lorry<small>Cargo deliveries</small></button>
+    </div>
+    <div class="swatches" id="colors"></div>
+    <label>Map<select id="region"></select></label>
+    <div class="row2">
+      <label>Start in<select id="startCity"></select></label>
+      <label>Room code<input id="room" maxlength="12" placeholder="public" autocomplete="off"></label>
+    </div>
+    <button id="startBtn" class="big">DRIVE (FREE ROAM)</button>
+    <button id="storyBtn" class="big story">ANDHRA UNDERWORLD &ndash; THE FOUR<small>4-player crime story &middot; play online with friends</small></button>
+    <div id="menuStatus" class="note"></div>
+    <div class="keys"><b>W A S D</b> drive (<b>S</b> = brake, then reverse) &nbsp; <b>Space</b> handbrake &nbsp; <b>H</b> horn &nbsp; <b>L</b> lights &nbsp; <b>C</b> camera &nbsp; <b>J</b> jobs &nbsp; <b>M</b> map &nbsp; <b>F</b> refuel &nbsp; <b>R</b> reset &nbsp; <b>V</b> vehicle &nbsp; <b>Enter</b> chat &nbsp; <b>Tab</b> players &nbsp; <b>E</b> get out / in &nbsp; <b>Shift</b> run &nbsp; <b>G</b> shoot &nbsp; <b>T</b> story</div>
+  </div>
+</div>
+
+<div id="hud" hidden>
+  <div id="status" class="pill"></div>
+  <div id="topInfo"><div id="where"></div><div id="clock"></div></div>
+  <div id="moneyBox"><div id="money">Rs 0</div><div id="rank"></div></div>
+  <div id="radar"><canvas id="minimap" width="360" height="360"></canvas><div id="radarN">N</div></div>
+  <div id="vitals"><div class="vbar hp"><i id="hpBar"></i><b id="hpTxt">100</b></div><div class="vbar ar"><i id="arBar"></i></div><div id="weapon">PISTOL</div></div>
+  <div id="wpBox" hidden><div id="wpArrow">▲</div><div id="wpDist"></div><button id="wpClear" title="Remove pin">✕</button></div>
+<div id="wanted" hidden><div id="stars"></div><div id="wantedTxt"></div></div>
+<div id="radio" hidden><b>POLICE RADIO</b><span id="radioTxt"></span></div>
+<div id="jobPanel" hidden><div id="jobTitle"></div><div id="jobStep"></div><div class="jobRow"><span id="jobDist"></span><span id="jobTime"></span></div><div class="jobRow"><button id="jobCancel">Cancel job [X]</button></div></div>
+  <div id="arrowBox" hidden><div id="arrow"></div></div>
+  <div id="dash">
+    <div id="speed">0</div><div id="unit">km/h</div>
+    <div id="gear">N</div>
+    <div class="gauge"><i id="fuelBar"></i><span id="fuelTxt">FUEL</span></div>
+  </div>
+  <div id="prompt" hidden></div>
+  <div id="toast" hidden></div>
+  <div id="chatlog"></div>
+  <input id="chatinput" maxlength="120" placeholder="Say something..." hidden autocomplete="off">
+  <div id="players" hidden></div>
+  <div id="flash"></div>
+  <div id="help">H horn · L lights · C camera · J jobs · M map · V vehicle · Esc menu</div>
+  <div id="touch" hidden>
+    <div class="tl"><button data-k="left">◀</button><button data-k="right">▶</button></div>
+    <div class="tr"><button data-k="rev" class="rev">REV</button><button data-k="gas" class="gas">GAS</button><button data-k="brake">BRAKE</button></div>
+    <div class="ta"><button data-k="fire" class="fire">🔫<br>FIRE</button><button data-k="act" class="act" id="actBtn">🚪<br>EXIT</button></div>
+    <div class="tm"><button data-k="horn">📢</button><button data-k="jobs">JOBS</button><button data-k="map">MAP</button><button data-k="story" id="storyTouch">STORY</button><button data-k="mic" id="micBtn">🎤</button><button data-k="fuel" id="fuelBtn" style="display:none">⛽ FUEL</button></div>
+  </div>
+  <div id="joyZone" hidden></div><div id="joyBase" hidden><div id="joyKnob"></div></div>
+  <div id="footBtns" hidden>
+    <button data-k="shoot" id="shootBtn" class="shoot">🔫</button>
+    <button data-k="jump" id="jumpBtn" class="jump">⤒<br>JUMP</button>
+    <button data-k="act" id="enterBtn" class="enter" hidden>🚗<br>ENTER</button>
+  </div>
+  <div id="enterPrompt" hidden></div>
+</div>
+
+
+<div id="cine" hidden>
+  <div class="bar top"></div><div class="bar bottom"></div>
+  <div id="cineTitle"></div>
+  <div id="cineSub"><div id="cineWho"></div><div id="cineText"></div></div>
+  <div id="cineFoot"><span id="cineReady"></span><button id="cineSkip">SKIP &#9654;</button></div>
+</div>
+<div id="callBox" hidden><div id="callAva">📞</div><div><b id="callWho"></b><div id="callTxt"></div></div></div>
+<div id="objective" hidden><div id="objChap"></div><div id="objTitle"></div><div id="objText"></div><div class="jobRow"><span id="objDist"></span><span id="objTime"></span></div><div id="objTeam"></div></div>
+<div id="choice" class="screen" hidden><div class="card"><h2 id="choiceTitle"></h2><p class="sub" id="choiceText"></p><div id="choiceBtns"></div><div class="note" id="choiceNote"></div></div></div>
+<div id="hack" class="screen" hidden><div class="card"><h2 id="hackTitle">TERMINAL</h2><p class="sub" id="hackText"></p><div id="hackGrid"></div><div class="note" id="hackNote"></div><div class="rowEnd"><span id="hackTime"></span><button id="hackCancel">Abort</button></div></div></div>
+<div id="wasted" hidden><div id="wastedTxt">WASTED</div><div id="wastedSub"></div></div>
+<div id="lobby" class="screen" hidden><div class="card wide"><h2>ANDHRA UNDERWORLD &ndash; THE FOUR</h2><p class="sub" id="lobbyHint">Four friends. One king. Pick your character &ndash; every role has its own missions. Missing roles are played by AI teammates.</p>
+  <div id="roleGrid"></div>
+  <div class="rowEnd"><label class="inl">Start at chapter <select id="lobbyCh"></select></label><span id="lobbyInfo" class="note"></span><button id="lobbyLeave">Free roam</button><button id="lobbyStart" class="big" style="width:auto;margin:0">START STORY</button></div></div></div>
+<div id="storyEnd" class="screen" hidden><div class="card"><h2 id="endTitle"></h2><p class="sub" id="endText"></p><div class="rowEnd"><button id="endClose" class="big" style="width:auto;margin:0">CONTINUE</button></div></div></div>
+
+<div id="tags"></div>
+
+<div id="board" class="screen" hidden><div class="card"><h2 id="boardTitle">Job board</h2><div id="boardList"></div><div class="rowEnd"><button id="boardRefresh">New offers</button><button id="boardClose">Close [J]</button></div></div></div>
+<div id="garage" class="screen" hidden><div class="card"><h2>Garage</h2><p class="sub">Switching vehicles refuels you, cancels any active job and is shared with other players.</p>
+  <div class="row3" id="garVeh"><button data-veh="car"><span>🚗</span>Hatchback</button><button data-veh="bus"><span>🚌</span>Bus</button><button data-veh="lorry"><span>🚛</span>Lorry</button></div>
+  <div class="swatches" id="garColors"></div><div class="rowEnd"><button id="garClose">Close [V]</button></div></div></div>
+<div id="bigmap" class="screen" hidden><div class="card wide"><h2>Map <small>(real roads &amp; buildings, OpenStreetMap)</small></h2><canvas id="bigcanvas" width="1100" height="1000"></canvas><div class="rowEnd"><span class="legend"><i style="background:#e8903d"></i>Highway <i style="background:#f6d27a"></i>Main road <i style="background:#9aa0a6"></i>Street <i style="background:#d63031"></i>Petrol</span><span class="hintTap">Tap the map to drop a pin</span><button id="mapZin">＋</button><button id="mapZout">－</button><button id="mapZreset">Reset</button><button id="mapClose">Close [M]</button></div></div></div>
+<div id="pause" class="screen" hidden><div class="card"><h2>Menu</h2>
+  <label>Graphics<select id="quality"><option value="low">Low (fast)</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+  <label>Volume<input id="volume" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+  <div class="row2"><button id="pauseResume" class="big">Resume</button><button id="pauseLeave">Quit to menu</button></div>
+  <div class="note" id="pauseInfo"></div></div></div>
+
+<script src="config.js"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
