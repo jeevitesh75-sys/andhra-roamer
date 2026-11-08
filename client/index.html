@@ -28,6 +28,7 @@
       <label>Start in<select id="startCity"></select></label>
       <label>Room code<input id="room" maxlength="12" placeholder="public" autocomplete="off"></label>
     </div>
+    <button id="fsMenu" type="button">⛶ Full screen</button>
     <button id="startBtn" class="big">DRIVE (FREE ROAM)</button>
     <button id="storyBtn" class="big story">ANDHRA UNDERWORLD &ndash; THE FOUR<small>4-player crime story &middot; play online with friends</small></button>
     <div id="menuStatus" class="note"></div>
@@ -58,11 +59,13 @@
   <div id="players" hidden></div>
   <div id="flash"></div>
   <div id="help">H horn · L lights · C camera · J jobs · M map · V vehicle · Esc menu</div>
+  <div id="mates"></div>
+  <div id="sysBar"><button id="fsBtn" title="Full screen [U]">⛶</button><button id="micDesk" title="Voice chat [B]">🎤</button><button id="gatherDesk" title="Go to a friend [T]">👥</button></div>
   <div id="touch" hidden>
     <div class="tl"><button data-k="left">◀</button><button data-k="right">▶</button></div>
     <div class="tr"><button data-k="rev" class="rev">REV</button><button data-k="gas" class="gas">GAS</button><button data-k="brake">BRAKE</button></div>
     <div class="ta"><button data-k="fire" class="fire">🔫<br>FIRE</button><button data-k="act" class="act" id="actBtn">🚪<br>EXIT</button></div>
-    <div class="tm"><button data-k="horn">📢</button><button data-k="jobs">JOBS</button><button data-k="map">MAP</button><button data-k="story" id="storyTouch">STORY</button><button data-k="mic" id="micBtn">🎤</button><button data-k="fuel" id="fuelBtn" style="display:none">⛽ FUEL</button></div>
+    <div class="tm"><button data-k="horn">📢</button><button data-k="jobs">JOBS</button><button data-k="map">MAP</button><button data-k="story" id="storyTouch">STORY</button><button data-k="mic" id="micBtn">🎤</button><button data-k="gather">👥</button><button data-k="fs">⛶</button><button data-k="fuel" id="fuelBtn" style="display:none">⛽ FUEL</button></div>
   </div>
   <div id="joyZone" hidden></div><div id="joyBase" hidden><div id="joyKnob"></div></div>
   <div id="footBtns" hidden>

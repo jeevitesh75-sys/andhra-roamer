@@ -157,3 +157,25 @@ label.inl{display:flex;align-items:center;gap:8px;margin:0;text-transform:none}l
 .roleCard{border:1px solid var(--line);border-radius:14px;padding:12px;text-align:left;background:rgba(255,255,255,.05);display:block;width:100%}.roleCard b{display:block;font-size:16px}.roleCard small{display:block;color:var(--mut);margin-top:3px}
 .roleCard .who{margin-top:8px;font-weight:700;color:#7dffb0}.roleCard.taken .who{color:#ffd166}.roleCard.mine{border-color:#f6c744;box-shadow:0 0 0 1px #f6c744 inset}.roleCard .em{font-size:30px}
 @media (max-height:520px){#cineSub{bottom:calc(13vh + 4px)}#cineText{font-size:14px}}
+
+/* =====================================================================
+   v3c: no overlapping boxes, full-screen map, teammate arrows, voice/fullscreen buttons
+   ===================================================================== */
+.is-touch #objective{top:46px!important;left:50%!important;transform:translateX(-50%)!important;width:min(300px,38vw)!important}
+.is-touch #callBox{top:118px}
+.is-touch #radio{top:auto;bottom:6px;left:50%}
+.is-touch #wpBox{top:8px;left:30%}
+#objective{max-width:calc(100vw - 24px)}
+@media (max-height:520px){#objective{padding:4px 8px}#objChap{font-size:9px}#objTitle{font-size:12px}#objText{font-size:11px}}
+#bigmap .card.wide{width:100vw;max-width:none;height:100vh;height:100dvh;max-height:none;border-radius:0;padding:8px 10px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box}
+#bigmap h2{margin:0;font-size:15px}
+#bigmap canvas#bigcanvas{flex:1 1 auto;min-height:0;width:100%;height:100%;border-radius:10px;background:#0b1626;display:block}
+#bigmap .rowEnd{flex:0 0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#mates{position:fixed;inset:0;pointer-events:none;z-index:5}
+.mate{position:absolute;transform:translate(-50%,-50%);background:rgba(8,14,26,.84);border:2px solid #7dffb0;border-radius:12px;padding:2px 9px;font:700 11px system-ui;color:#fff;text-align:center;white-space:nowrap;display:none}
+.mate span{display:block;font-weight:500;color:#cfd8e4;font-size:10px}
+#sysBar{position:fixed;right:14px;top:132px;display:flex;flex-direction:column;gap:8px;z-index:7}
+#sysBar button{width:44px;height:44px;border-radius:50%;font-size:18px;padding:0;background:rgba(10,16,26,.75);border:1px solid rgba(255,255,255,.4);color:#fff;cursor:pointer}
+#sysBar button.live,.tm button.live{background:#1e8f4e!important;box-shadow:0 0 0 3px rgba(61,220,132,.5)}
+.is-touch #sysBar{display:none}
+#fsMenu{margin-bottom:8px}

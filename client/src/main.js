@@ -8,6 +8,7 @@ import { Net, FLAG } from './net.js';
 import { MapView } from './map2d.js';
 import { generateOffers, JobRunner, FUEL_PRICE, rankFor } from './jobs.js';
 import { AudioFX } from './audio.js';
+import { toggleFullscreen, Voice, Team } from './extras.js';
 import { Characters } from './characters.js';
 import { ParkedLot, distToVehicle } from './parked.js';
 import { Law } from './law.js';
@@ -63,7 +64,7 @@ function buildMenu() {
   swatches($('colors'), c => { G.profile.color = c; });
   const vehBtns = (host, onPick) => { [...host.querySelectorAll('button')].forEach(b => { b.classList.toggle('sel', b.dataset.veh === G.profile.veh); b.onclick = () => { onPick(b.dataset.veh); [...host.querySelectorAll('button')].forEach(k => k.classList.toggle('sel', k === b)); }; }); };
   vehBtns($('vehPick'), v => { G.profile.veh = v; });
-  $('startBtn').onclick = startGame;
+  $('startBtn').onclick = startGame; if ($('fsMenu')) $('fsMenu').onclick = () => { if (!toggleFullscreen()) toast('Full screen is not supported here', 2500); };
   $('storyBtn').onclick = () => { try { sessionStorage.setItem('wantStory', '1'); } catch (e) { /* ignore */ } startGame(); };
   try { if (sessionStorage.getItem('wantStory') === '1') setTimeout(startGame, 400); } catch (e) { /* ignore */ }
   $('name').addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
@@ -107,13 +108,13 @@ async function startGame() {
   let left = 1; while (left > 0) { left = G.scene.updateChunks(dp.x, dp.z, 4); progress('Rendering the world...', 0.5 + 0.5 * (1 - Math.min(1, left / 60))); await nextFrame(); }
   G.vcolor = prof.color; G.scene.model('me', prof.veh, G.vcolor);
   $('loading').hidden = true; $('hud').hidden = false;
-  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) { $('touch').hidden = false; G.touch.enabled = true; $('hud').classList.add('is-touch'); }
-  setFootMode(!!G.foot); if (!G.joy) G.joy = new Joystick($('joyZone'), $('joyBase'), $('joyKnob')); $('micBtn').style.display = 'none';
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) { $('touch').hidden = false; G.touch.enabled = true; $('hud').classList.add('is-touch'); document.documentElement.classList.add('is-touch'); }
+  setFootMode(!!G.foot); if (!G.joy) G.joy = new Joystick($('joyZone'), $('joyBase'), $('joyKnob')); 
   G.swatches($('garColors'), c2 => { G.profile.color = c2; applyVehicleChange(); });
   G.vehBtns($('garVeh'), v => { G.profile.veh = v; applyVehicleChange(); });
   persist();
   // network
-  if (!G.net) G.net = new Net({ onStatus: onNetStatus, onChat: m => addChat(m.name, m.text), onJoin: r => { toast(r.name + ' joined'); }, onLeave: r => { toast(r.name + ' left'); G.scene.removeModel('r' + r.id); G.chars.remove('r' + r.id); dropTag(r.id); },
+  if (!G.net) G.net = new Net({ onStatus: onNetStatus, onChat: m => addChat(m.name, m.text), onJoin: r => { toast(r.name + ' joined'); G.voice && G.voice.onJoin(r.id); }, onLeave: r => { toast(r.name + ' left'); G.voice && G.voice.onLeave(r.id); G.scene.removeModel('r' + r.id); G.chars.remove('r' + r.id); dropTag(r.id); },
     onLeaveAll: () => { for (const k of [...G.scene.models.keys()]) if (k.startsWith('r')) G.scene.removeModel(k); clearTags(); }, onError: m => toast(m, 3500),
     onWelcome: m => { G.lot.dyn.clear(); G.lot.taken = new Set(m.taken || []); for (const v of m.parked || []) G.lot.dyn.set(v.id, v); G.storyC.onState(m.story); },
     onParkAdd: (v, by) => { if (by === G.net.id && G.myPark && G.myPark.startsWith('me~')) { const e = G.lot.dyn.get(G.myPark); G.lot.dyn.delete(G.myPark); G.lot.dyn.set(v.id, { ...(e || {}), ...v, mine: true }); G.myPark = v.id; } else G.lot.dyn.set(v.id, v); },
@@ -172,7 +173,7 @@ function initInput() {
     cvs.addEventListener('pointermove', e => { const p = look.get(e.pointerId); if (!p) return; const k = e.pointerType === 'mouse' ? 0.006 : G.foot ? 0.0055 : 0.008; G.orbit -= (e.clientX - p.x) * k; G.orbitY = clamp(G.orbitY + (e.clientY - p.y) * 0.03, -2.5, 9); p.x = e.clientX; p.y = e.clientY; G.lastDrag = performance.now(); G.freeLook = true; });
   }
   $('game').addEventListener('wheel', e => { G.zoom = clamp(G.zoom * (e.deltaY > 0 ? 1.08 : 0.92), 0.6, 1.9); }, { passive: true });
-  addEventListener('resize', () => G.scene && G.scene.resize());
+  addEventListener('resize', () => { G.scene && G.scene.resize(); if (!$('bigmap').hidden) { fitBigMap(); drawBigMap(); } });
   // minimap zoom: tap / wheel / + -
   const MINI = [250, 450, 650, 1000, 1600, 2800], mini = d => { let i = MINI.indexOf(G.miniR || 650); if (i < 0) i = 2; G.miniR = MINI[clamp(i + d, 0, MINI.length - 1)]; toast('Minimap ' + (G.miniR >= 1000 ? (G.miniR / 500).toFixed(1) + ' km' : G.miniR * 2 + ' m') + ' wide', 900); };
   $('minimap').addEventListener('click', () => { const i = MINI.indexOf(G.miniR || 650); if (i >= MINI.length - 1) G.miniR = MINI[0]; else mini(1); });
@@ -203,7 +204,7 @@ function initInput() {
     b.addEventListener('mousedown', on(true)); b.addEventListener('mouseup', on(false));
   }
   for (const b of document.querySelectorAll('#touch button')) {
-    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); if (v && k === 'act') toggleFoot(); if (v && k === 'story') G.storyC.openLobby(); };
+    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); if (v && k === 'act') toggleFoot(); if (v && k === 'story') G.storyC.openLobby(); if (v && k === 'mic') toggleMic(); if (v && k === 'gather') gather(); if (v && k === 'fs') toggleFs(); };
     b.addEventListener('touchstart', on(true), { passive: false }); b.addEventListener('touchend', on(false), { passive: false }); b.addEventListener('touchcancel', on(false), { passive: false });
   }
 }
@@ -217,7 +218,20 @@ function readInput(dt) {
 }
 
 /* ------------------------------------------------------------ HUD / UI */
+function toggleFs() { if (!toggleFullscreen()) toast('Full screen is not supported here. On iPhone: Share > Add to Home Screen', 4000); }
+async function toggleMic() { await G.voice.toggle(); syncMic(); }
+function syncMic() { const s = G.voice.status(); for (const b of [$('micBtn'), $('micDesk')]) if (b) { b.classList.toggle('live', s === 'live'); b.textContent = s === 'muted' ? '🔇' : '🎤'; } }
+function gather() {
+  const P = G.foot || G.veh, f = G.team.nearestFriend(P);
+  if (!f) { toast('No friends in this room yet - share your room code', 2800); return; }
+  if (f.d < 40) { toast('You are already with ' + f.name, 1800); return; }
+  if (!G.foot) { const sn = G.world.snapToRoad(f.x + 6, f.z, 150, 6); if (sn) { const p = G.world.roadPoint(sn.road, sn.s, 2.6, {}); G.veh.reset(p.x, p.z, p.h); G.camInit = false; G.scene.updateChunks(p.x, p.z, 60); toast('Joined ' + f.name, 2200); return; } }
+  H.stageTeam({ x: f.x + 6, z: f.z + 6 }); toast('Joined ' + f.name, 2200);
+}
 function initHud() {
+  G.voice = new Voice(G, toast); G.team = new Team(G); G.updateTag = updateTag; G.dropTag = dropTag; G.H = H;
+  for (const [id, fn] of [['fsBtn', toggleFs], ['micDesk', toggleMic], ['gatherDesk', gather]]) { const b = $(id); if (b) b.onclick = fn; }
+  addEventListener('keydown', e => { if (typing() || !G.running) return; if (e.code === 'KeyU') toggleFs(); else if (e.code === 'KeyB') toggleMic(); else if (e.code === 'KeyT') gather(); });
   $('jobCancel').onclick = cancelJob; $('boardClose').onclick = toggleBoard; $('garClose').onclick = toggleGarage; $('mapClose').onclick = toggleMap;
   $('wpClear').onclick = () => setWaypoint(null);
   $('boardRefresh').onclick = () => { G.offerSeed++; renderBoard(); };
@@ -239,7 +253,8 @@ function onNetStatus(s, detail) {
 }
 function closeModals() { for (const id of ['board', 'garage', 'bigmap', 'pause']) $(id).hidden = true; G.paused = false; }
 function togglePause(v) { closeModals(); $('pause').hidden = !v; G.paused = v; $('pauseInfo').textContent = G.net && G.net.status === 'online' ? `Room "${G.net.room}" - share the room code with friends. Ping ${Math.round(G.net.rtt)} ms.` : 'Offline.'; if (v) G.audio.update(0, 0, 0, G.veh.type); }
-function toggleMap() { const open = $('bigmap').hidden; closeModals(); $('bigmap').hidden = !open; if (open) drawBigMap(); }
+function fitBigMap() { const c = $('bigcanvas'), dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.max(300, Math.round(c.clientWidth * dpr)), h = Math.max(200, Math.round(c.clientHeight * dpr)); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } }
+function toggleMap() { const open = $('bigmap').hidden; closeModals(); $('bigmap').hidden = !open; if (open) { fitBigMap(); const P = G.foot || G.veh; G.mapV = { zoom: 4, cx: P.x, cz: P.z }; drawBigMap(); } }
 function toggleGarage() { const open = $('garage').hidden; closeModals(); $('garage').hidden = !open; }
 function toggleBoard() { const open = $('board').hidden; closeModals(); if (!open) return; $('board').hidden = false; renderBoard(); }
 function drawBigMap() { const c = $('bigcanvas'), M = G.mapV || (G.mapV = { zoom: 1, cx: null, cz: null }); G.map.draw(c.getContext('2d'), c.width, c.height, { full: true, theme: 'gta3', zoom: M.zoom, mcx: M.cx, mcz: M.cz, me: G.foot || G.veh, wp: G.wp, target: G.runner && G.runner.target, players: remotePins(), blips: allBlips(true) }); }
@@ -478,7 +493,7 @@ function stepSim(dt) {
   const np = G.scene.npcPos;
   for (let i = 0; i < np.length; i++) {
     const n = np[i], dx = v.x - n.x, dz = v.z - n.z; if (dx * dx + dz * dz > 400) continue;
-    const rr = (n.type === 'bus' ? 4.6 : n.type === 'lorry' ? 4.2 : 2.3) + v.spec.wid * 0.5 + 0.8, d = Math.hypot(dx, dz);
+    const rr = (n.type === 'bus' ? 4.6 : n.type === 'lorry' ? 4.2 : n.type === 'bike' ? 1.5 : 2.3) + v.spec.wid * 0.5 + 0.8, d = Math.hypot(dx, dz);
     if (d < rr && d > 0.01) {
       const nx = dx / d, nz = dz / d, vn = v.vx * nx + v.vz * nz;
       v.x += nx * (rr - d); v.z += nz * (rr - d);
@@ -639,13 +654,14 @@ const H = {
     G.scene.updateChunks(A.x, A.z, 60); G.joy && G.joy.release();
   },
 };
-function onEv(k, d, from) { G.storyC.onEv(k, d, from); }
+function onEv(k, d, from) { if (k === 'rtc') { G.voice && G.voice.onSignal(d, from); return; } G.storyC.onEv(k, d, from); }
 G_expose();
 function G_expose() { G.setStars = setStars; G.hurt = hurt; G.lawChase = () => G.law.chasers() > 0; G.arrestBusy = () => !!(G.arrest || G.dead); }
 function allBlips(full) {
   const out = []; for (const st of G.law.stations) out.push({ x: st.x, z: st.z, color: '#3b6fe0', r: 5, glyph: 'P', gcolor: '#fff', label: full ? st.name : '' });
   for (const s of G.world.stations || []) if (full) out.push({ x: s.x, z: s.z, color: '#d63031', r: 3 });
   if (G.storyC) out.push(...G.storyC.blips());
+  if (G.team) out.push(...G.team.blips());
   if (G.police.active) for (const P of G.police.cars) if (P.hp > 0 && !P.block) out.push({ x: P.car.x, z: P.car.z, color: (performance.now() / 300 | 0) % 2 ? '#e74c3c' : '#3b6fe0', r: 3.5 });
   for (const o of G.law.officers) if (o.state === 'chase' && o.hp > 0) out.push({ x: o.x, z: o.z, color: '#6aa0ff', r: 3 });
   return out;
@@ -665,6 +681,7 @@ function stationMesh(st) {
 function renderWorldExtras(dt, pose) {
   const sc = G.scene, C = G.chars, S = G.storyC, cine = S && S.cine, w = G.world; const fx = G.foot ? G.foot.x : pose.x, fz = G.foot ? G.foot.z : pose.z, t = performance.now() / 1000;
   S.update(dt);
+  G.lightsOn = G.lights !== 'off'; G.team.update(dt, t, G.foot ? { x: G.foot.x, z: G.foot.z, h: G.foot.h } : pose, !!G.foot);
   G.lot.render(sc, fx, fz);
   // stations
   for (const st of G.law.stations) { const near = Math.hypot(st.x - fx, st.z - fz) < 450, o = stMeshes.get(st.id); if (near && !o) stMeshes.set(st.id, stationMesh(st)); else if (!near && o) { sc.scene.remove(o.g); stMeshes.delete(st.id); } else if (o) { const on = (t * 3 | 0) % 2; o.l1.visible = !!on; o.l2.visible = !on; } }

@@ -440,10 +440,14 @@ export class Scene3D {
     const rnd = mulberry32(2024), w = this.world; this.npcs = [];
     const roads = w.trafficRoads || w.roads.filter(r => r.kind !== 'ghat');
     const colors = ['#e74c3c', '#f1c40f', '#ecf0f1', '#3498db', '#2ecc71', '#e67e22', '#9b59b6', '#bdc3c7', '#1abc9c', '#c0392b'];
-    for (let i = 0; i < 90; i++) {
-      const road = roads[Math.floor(rnd() * roads.length)], r = rnd();
-      const type = r < 0.55 ? 'car' : r < 0.75 ? 'bus' : 'lorry';
-      const speed = type === 'car' ? 17 + rnd() * 10 : type === 'bus' ? 13 + rnd() * 6 : 11 + rnd() * 6;
+    // ambient traffic: cars, motorbikes, buses and lorries on roads around the cities (so there is always life near you)
+    const hubs = (w.cities || []).filter(c => c.tier >= 1);
+    const near = r => { const p = w.roadPoint(r, r.len / 2, 0, {}); for (const c of hubs) if ((c.x - p.x) ** 2 + (c.z - p.z) ** 2 < 6000 * 6000) return true; return false; };
+    let pool = w.roads.filter(r => r.cls <= 6 && r.len > 150 && near(r)); if (pool.length < 20) pool = roads;
+    for (let i = 0; i < 170; i++) {
+      const road = pool[Math.floor(rnd() * pool.length)], r = rnd();
+      const type = r < 0.38 ? 'car' : r < 0.65 ? 'bike' : r < 0.8 ? 'bus' : 'lorry';
+      const speed = type === 'car' ? 12 + rnd() * 9 : type === 'bike' ? 10 + rnd() * 9 : type === 'bus' ? 10 + rnd() * 5 : 9 + rnd() * 5;
       this.npcs.push({ id: i, road, s0: rnd() * road.len * 2, speed, type, color: colors[Math.floor(rnd() * colors.length)] });
     }
     this.npcPos = this.npcs.map(() => ({ x: 0, z: 0, y: 0, h: 0 })); this._rp = {};
@@ -456,7 +460,7 @@ export class Scene3D {
       const p = w.roadPoint(n.road, s, fwd ? 2.6 : -2.6, this._rp);           // drive on the left of travel
       const pos = this.npcPos[i]; pos.x = p.x; pos.z = p.z; pos.y = p.y; pos.h = fwd ? p.h : p.h + Math.PI; pos.type = n.type;
       const d2 = (p.x - focus.x) ** 2 + (p.z - focus.z) ** 2, key = 'npc' + n.id;
-      if (d2 < 900 * 900) { const m = this.model(key, n.type, n.color); this.placeModel(m, { ...pos, lights: night, steer: 0 }); m.group.visible = true; }
+      if (d2 < 650 * 650) { const m = this.model(key, n.type, n.color); this.placeModel(m, { ...pos, lights: night, steer: 0 }); m.group.visible = true; }
       else if (this.models.has(key)) this.removeModel(key);
     });
   }
