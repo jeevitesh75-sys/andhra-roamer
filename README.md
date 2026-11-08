@@ -12,6 +12,7 @@ Test locally: `cd server && node server.js`, serve `client/` (e.g. `npx serve cl
 Three real regions ship in `client/data/`: **Vijayawada-Guntur**, **Visakhapatnam**, **Tirupati** (real roads, ~360k real buildings, water, land use, petrol stations, 1 game metre = 1 real metre). Pick the region in the menu; players in the same region + room code drive together.
 To add/replace a region: download a BBBike GeoJSON extract and run `python3 tools/osm2game.py <id> "<Name>" <west> <south> <east> <north> <file.geojson> client/data`, then add it to `REGIONS` in `client/src/main.js`.
 OSM has no elevation, so the ground is flat. Vizag's sea is not in the extract (empty land east of the coast).
+Extras: railway tracks + real stations, bridges over water, street lights, pedestrians/cows/dogs/goats you can hit (hitting a person starts a police chase: escape 500 m away for 10 s, or get fined if caught), map pins with a direction arrow (tap the big map).
 URL options: `?time=day` / `?time=night`, `?region=vizag`, `?room=abc`.
 
 ## Controls

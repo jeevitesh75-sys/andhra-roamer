@@ -1,6 +1,7 @@
 // Andhra Roamer - game bootstrap, loop, input, camera, HUD, jobs, chat.
 import { SURF } from './geo.js';
 import { loadRegionData, createOsmWorld } from './osmworld.js';
+import { Crowd, Police } from './peds.js';
 import { Vehicle, SPECS, FIXED_DT, MAX_STEPS } from './physics.js';
 import { Scene3D } from './scene.js';
 import { Net, FLAG } from './net.js';
@@ -85,7 +86,7 @@ async function startGame() {
   if (first) {
     const q = G.save.quality || (matchMedia('(max-width: 800px)').matches ? 'low' : 'medium');
     try { G.scene = new Scene3D(G.T, $('game'), G.world, q); } catch (e) { $('ldErr').textContent = 'Graphics failed to start: ' + e.message; console.error(e); return; }
-    G.veh = new Vehicle(prof.veh, G.world);
+    G.veh = new Vehicle(prof.veh, G.world); G.crowd = new Crowd(G.world); G.police = new Police(G.world); G.wp = null;
     G.money = G.save.money || 0; G.earned = G.save.earned || 0;
     initInput(); initHud();
   } else { G.veh.setType(prof.veh); G.scene.removeModel('me'); }
@@ -162,8 +163,11 @@ function initInput() {
   window.__bigZoom = bigZoom;
   $('mapZin').onclick = () => bigZoom(1.6); $('mapZout').onclick = () => bigZoom(1 / 1.6); $('mapZreset').onclick = () => { G.mapV = { zoom: 1, cx: null, cz: null }; drawBigMap(); };
   cv.addEventListener('wheel', e => { e.preventDefault(); bigZoom(e.deltaY < 0 ? 1.25 : 0.8); }, { passive: false });
-  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinch = 0; });
-  cv.addEventListener('pointerup', e => { ptr.delete(e.pointerId); pinch = 0; }); cv.addEventListener('pointercancel', e => { ptr.delete(e.pointerId); pinch = 0; });
+  let down = null;
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinch = 0; down = ptr.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; });
+  cv.addEventListener('pointerup', e => {
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 7 && performance.now() - down.t < 600 && G.map.view) { const r = cv.getBoundingClientRect(), k = cv.width / r.width, V = G.map.view; setWaypoint({ x: ((e.clientX - r.left) * k - V.ox) / V.sc, z: ((e.clientY - r.top) * k - V.oz) / V.sc }); drawBigMap(); }
+    down = null; ptr.delete(e.pointerId); pinch = 0; }); cv.addEventListener('pointercancel', e => { ptr.delete(e.pointerId); pinch = 0; });
   cv.addEventListener('pointermove', e => {
     const p = ptr.get(e.pointerId); if (!p) return; const m = M(), k = cv.width / cv.clientWidth;
     if (ptr.size === 2) { const [a, b] = [...ptr.values()]; ptr.set(e.pointerId, { x: e.clientX, y: e.clientY }); const [c2, d2] = [...ptr.values()], dist = Math.hypot(c2.x - d2.x, c2.y - d2.y); if (pinch) bigZoom(dist / pinch); pinch = dist; return; }
@@ -188,6 +192,7 @@ function readInput(dt) {
 /* ------------------------------------------------------------ HUD / UI */
 function initHud() {
   $('jobCancel').onclick = cancelJob; $('boardClose').onclick = toggleBoard; $('garClose').onclick = toggleGarage; $('mapClose').onclick = toggleMap;
+  $('wpClear').onclick = () => setWaypoint(null);
   $('boardRefresh').onclick = () => { G.offerSeed++; renderBoard(); };
   $('pauseResume').onclick = () => togglePause(false);
   $('pauseLeave').onclick = () => { closeModals(); G.running = false; G.net.disconnect(); clearTags(); $('hud').hidden = true; $('menu').hidden = false; G.audio.update(0, 0, 0, 'car'); persist(); };
@@ -210,7 +215,7 @@ function togglePause(v) { closeModals(); $('pause').hidden = !v; G.paused = v; $
 function toggleMap() { const open = $('bigmap').hidden; closeModals(); $('bigmap').hidden = !open; if (open) drawBigMap(); }
 function toggleGarage() { const open = $('garage').hidden; closeModals(); $('garage').hidden = !open; }
 function toggleBoard() { const open = $('board').hidden; closeModals(); if (!open) return; $('board').hidden = false; renderBoard(); }
-function drawBigMap() { const c = $('bigcanvas'), M = G.mapV || (G.mapV = { zoom: 1, cx: null, cz: null }); G.map.draw(c.getContext('2d'), c.width, c.height, { full: true, zoom: M.zoom, mcx: M.cx, mcz: M.cz, me: G.veh, target: G.runner && G.runner.target, players: remotePins() }); }
+function drawBigMap() { const c = $('bigcanvas'), M = G.mapV || (G.mapV = { zoom: 1, cx: null, cz: null }); G.map.draw(c.getContext('2d'), c.width, c.height, { full: true, zoom: M.zoom, mcx: M.cx, mcz: M.cz, me: G.veh, wp: G.wp, target: G.runner && G.runner.target, players: remotePins() }); }
 function remotePins() { const out = []; if (!G.net) return out; for (const r of G.net.remotes.values()) { const s = r.snaps[r.snaps.length - 1]; if (s) out.push({ x: s.x, z: s.z, color: r.color, name: r.name }); } return out; }
 function renderPlayers() {
   const rows = [{ name: G.profile.name + ' (you)', veh: G.veh.type, money: G.money }, ...(G.net ? [...G.net.remotes.values()].map(r => ({ name: r.name, veh: r.veh, money: r.money })) : [])];
@@ -262,9 +267,23 @@ function resetToRoad(free) {
 }
 
 /* ------------------------------------------------------------ simulation */
+function onHit(ev) {
+  G.audio.crash(); G.veh.impact = Math.max(G.veh.impact || 0, 4);
+  if (ev.kind === 'human') { toast('You hit a pedestrian! The police are after you - escape!', 4500); if (!G.police.active && G.police.start(G.veh)) G.sirenT = 0; }
+  else { const fine = ev.kind === 'cow' ? 150 : ev.kind === 'goat' ? 80 : 50, paid = Math.min(G.money, fine); G.money -= paid; toast(`You hit a ${ev.kind}! Fine ${rs(paid)}`, 3000); }
+}
+function policeResult(res) {
+  G.scene.removeModel('pol');
+  if (res === 'escaped') toast('You escaped the police!', 3500);
+  else { const fine = Math.min(G.money, 1500); G.money -= fine; G.veh.vx = G.veh.vz = 0; toast(`Caught by the police! Fine ${rs(fine)}`, 4500); }
+}
+function setWaypoint(p) { G.wp = p; G.scene.setWaypoint(p); if (p) toast('Pin set - follow the blue arrow', 2000); }
+
 function stepSim(dt) {
   const v = G.veh, inp = readInput(dt);
   v.step(dt, inp);
+  for (const ev of G.crowd.update(dt, v)) onHit(ev);
+  { const res = G.police.update(dt, v); if (res) policeResult(res); }
   // soft collisions with ambient traffic
   const np = G.scene.npcPos;
   for (let i = 0; i < np.length; i++) {
@@ -356,6 +375,8 @@ function updateHud(dt, info, serverSec) {
   $('clock').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}  ·  ${v.surf === SURF.ROAD || v.surf === SURF.STREET ? 'road' : v.surf === SURF.WATER ? 'water!' : 'off-road'}`;
   const { city, dist } = nearestCityInfo(), nr = G.world.nearestRoad(v.x, v.z), onRoad = nr && nr.d < nr.halfW + 3 ? nr.road.ref : '';
   $('where').textContent = dist < city.R ? `${city.name}${city.te ? ' · ' + city.te : ''}` : `${(dist * 0.001).toFixed(1)} km from ${city.name}${onRoad ? ' · ' + onRoad : ''}`;
+  { const wp = G.wp, box = $('wpBox'); box.hidden = !wp; if (wp) { const d = Math.hypot(wp.x - v.x, wp.z - v.z); if (d < 25) { setWaypoint(null); toast('You have arrived!', 2500); } else { $('wpDist').textContent = d > 1000 ? `${(d * 0.001).toFixed(1)} km` : `${Math.round(d)} m`; $('wpArrow').style.transform = `rotate(${-(Math.atan2(wp.x - v.x, wp.z - v.z) - v.h) * 57.2958}deg)`; } }
+    const pol = G.police.active; $('wanted').hidden = !pol; if (pol) { const c = G.police.car; $('wantedTxt').textContent = `POLICE CHASE - ${Math.round(Math.hypot(c.x - v.x, c.z - v.z))} m behind. Get away!`; } }
   const r = G.runner; $('jobPanel').hidden = !r; $('arrowBox').hidden = !r;
   if (r) {
     const t = r.target, d = Math.hypot(t.x - v.x, t.z - v.z), ang = Math.atan2(t.x - v.x, t.z - v.z) - v.h;
@@ -385,12 +406,15 @@ function frame(now) {
   const me = G.scene.model('me', G.profile.veh === v.type ? v.type : v.type, G.profile.color);
   G.scene.placeModel(me, { ...pose, brake: v.brakeLit, lights: lightsOn, reverse: v.reversing, ax: v.ax, ay: v.ay, signed: v.u });
   G.scene.setHeadlight(lightsOn && info.night, { x: pose.x, y: pose.y, z: pose.z, h: pose.h }, v.spec);
+  G.scene.updatePeds(G.crowd.list);
+  if (G.police.active) { const c = G.police.car, m = G.scene.model('pol', 'car', '#1d3a8a'); G.scene.placeModel(m, { x: c.x, z: c.z, y: c.y || 0, h: c.h, pitch: c.pitch || 0, roll: c.roll || 0, steer: c.steerAngle || 0, brake: c.brakeLit, lights: true, reverse: c.reversing, signed: c.u });
+    if ((G.sirenT = (G.sirenT || 0) - dt) < 0) { G.sirenT = 0.9; G.audio.chime(); } } else if (G.scene.models.has('pol')) G.scene.removeModel('pol');
   updateRemotes(); updateCamera(dt, pose); G.scene.render();
   const flags = (v.brakeLit ? FLAG.BRAKE : 0) | (lightsOn ? FLAG.LIGHTS : 0) | (G.keys.KeyH ? FLAG.HORN : 0) | (v.reversing ? FLAG.REVERSE : 0);
   if (G.net) G.net.sendState(v, flags);
   G.audio.update(v.rpm, G.paused ? 0 : Math.max(0, G.keys.KeyW || G.keys.ArrowUp || G.touch.gas ? 1 : 0), v.skid * (v.speed > 3 ? 1 : 0), v.type);
   if ((G.hudT += dt) > 0.066) { G.hudT = 0; updateHud(dt, info, serverSec); }
-  if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, cx: v.x, cz: v.z, radius: G.miniR || 650, me: v, target: G.runner && G.runner.target, players: remotePins() }); if (!$('bigmap').hidden) drawBigMap(); }
+  if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, cx: v.x, cz: v.z, radius: G.miniR || 650, me: v, target: G.runner && G.runner.target, wp: G.wp, players: remotePins() }); if (!$('bigmap').hidden) drawBigMap(); }
   if ((G.saveT += dt) > 6) { G.saveT = 0; persist(); } if ((G.moneyT += dt) > 5) { G.moneyT = 0; if (G.net) G.net.sendMoney(G.earned); }
 }
 function autoQuality() {

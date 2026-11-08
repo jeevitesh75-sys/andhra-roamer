@@ -8,11 +8,11 @@ export const MAX_STEPS = 5;
 
 export const SPECS = {
   car: { label: 'Hatchback', len: 4.2, wid: 1.76, wheelbase: 2.55, track: 1.5, maxSpeed: 44, accel: 5.6, brake: 9.5, reverseMax: 9,
-    maxSteer: 0.62, steerSpeed: 17, tank: 45, fuelPerM: 0.00015, rate: 14, jobLabel: 'Taxi fares' },
+    maxSteer: 0.66, steerSpeed: 26, tank: 45, fuelPerM: 0.00015, rate: 14, jobLabel: 'Taxi fares' },
   bus: { label: 'Bus', len: 11.4, wid: 2.55, wheelbase: 6.1, track: 2.0, maxSpeed: 27, accel: 2.7, brake: 6.2, reverseMax: 6,
-    maxSteer: 0.5, steerSpeed: 13, tank: 200, fuelPerM: 0.0005, rate: 38, jobLabel: 'Passenger routes' },
+    maxSteer: 0.55, steerSpeed: 19, tank: 200, fuelPerM: 0.0005, rate: 38, jobLabel: 'Passenger routes' },
   lorry: { label: 'Lorry', len: 9.2, wid: 2.5, wheelbase: 5.2, track: 1.9, maxSpeed: 24, accel: 2.1, brake: 5.6, reverseMax: 6,
-    maxSteer: 0.52, steerSpeed: 13, tank: 300, fuelPerM: 0.00065, rate: 55, jobLabel: 'Cargo deliveries' },
+    maxSteer: 0.56, steerSpeed: 19, tank: 300, fuelPerM: 0.00065, rate: 55, jobLabel: 'Cargo deliveries' },
 };
 
 const SURFACE = {
@@ -102,11 +102,11 @@ export class Vehicle {
 
     // ---- steering (bicycle model, speed-sensitive, grip-limited) ----
     const target = clamp(input.steer, -1, 1) * s.maxSteer / (1 + (Math.abs(u) / s.steerSpeed) ** 2);
-    const sr = 4.5 * dt;                                    // steering wheel rate limit
+    const sr = 6.5 * dt;                                    // steering wheel rate limit
     this.steerAngle += clamp(target - this.steerAngle, -sr, sr);
     let yaw = -(u / s.wheelbase) * Math.tan(this.steerAngle);
     const hb = input.handbrake ? 1 : 0;
-    const latMax = (9.5 * sp.grip) * (1 + hb * 0.9);
+    const latMax = (14 * sp.grip) * (1 + hb * 0.9);
     const yawMax = latMax / Math.max(Math.abs(u), 2);
     yaw = clamp(yaw * (1 + hb * 0.45), -yawMax, yawMax);
     this.h += yaw * dt;

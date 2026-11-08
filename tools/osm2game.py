@@ -70,7 +70,7 @@ def minrect(ring):
 
 def hsh(*a): return int(hashlib.md5(repr(a).encode()).hexdigest()[:8], 16)
 
-roads, names, bld, hubs, stations = [], {}, [], [], []
+roads, names, bld, hubs, stations, rails, rstations = [], {}, [], [], [], [], []
 land = Image.new('L', (GW, GH), 0); ld = ImageDraw.Draw(land)
 layers = {}   # class -> list of polygons (so draw order is by priority)
 water_poly, water_lines = [], []
@@ -90,6 +90,8 @@ with open(src) as f:
             pl = p.get('place')
             if pl in ('city', 'town', 'suburb') and p.get('name'):
                 x, z = prj(*g['coordinates']); hubs.append({'name': p['name'], 'te': p.get('name:te', ''), 'tier': 2 if pl == 'city' else 1 if pl == 'town' else 0, 'x': round(x), 'z': round(z)})
+            if p.get('railway') in ('station', 'halt') and p.get('name') and p.get('railway') != 'abandoned':
+                x, z = prj(*g['coordinates']); rstations.append({'x': round(x, 1), 'z': round(z, 1), 'name': p['name'], 'te': p.get('name:te', ''), 'ref': p.get('ref', '')})
             if p.get('amenity') == 'fuel':
                 x, z = prj(*g['coordinates']); stations.append({'x': round(x, 1), 'z': round(z, 1), 'name': p.get('name') or p.get('brand') or 'Petrol bunk'})
             continue
@@ -100,6 +102,8 @@ with open(src) as f:
             cls = ROAD_CLS[p['highway']]
             if cls <= 4 and (p.get('ref') or p.get('name')): names[len(roads)] = (p.get('ref') or p.get('name'))[:24]
             roads.append((cls, pts, 1 if p.get('bridge') in ('yes', 'viaduct') else 0)); continue
+        if p.get('railway') in ('rail', 'light_rail', 'narrow_gauge') and gt == 'LineString' and not p.get('service') and p.get('tunnel') != 'yes':
+            rails.append(dp([prj(*c) for c in g['coordinates']], 1.5)); continue
         if 'building' in p and gt == 'MultiPolygon':
             bt = p['building']; bc = BCLS.get(bt, 0)
             if p.get('amenity') == 'place_of_worship' or p.get('building') in ('temple',): bc = 4
@@ -153,6 +157,10 @@ starts = [0]; flat = []
 for cls, pts, br in roads: flat += [c for p in pts for c in p]; starts.append(starts[-1] + len(pts))
 rb = struct.pack('<II', len(roads), starts[-1]) + pad4(bytes(r[0] | (r[2] << 7) for r in roads)) + np.array(starts, '<u4').tobytes() + np.array(flat, '<f4').tobytes()
 open(f'{out}/{rid}.roads.bin', 'wb').write(rb)
+# rails
+rs = [0]; rflat = []
+for pts in rails: rflat += [c for q in pts for c in q]; rs.append(rs[-1] + len(pts))
+open(f'{out}/{rid}.rail.bin', 'wb').write(struct.pack('<II', len(rails), rs[-1]) + np.array(rs, '<u4').tobytes() + np.array(rflat, '<f4').tobytes())
 # buildings
 B = np.array(bld, dtype=np.float64).reshape(-1, 7); m = len(B)
 bb = struct.pack('<I', m) + B[:, 0].astype('<f4').tobytes() + B[:, 1].astype('<f4').tobytes() + pad4(np.clip(B[:, 2] * 20, 1, 65535).astype('<u2').tobytes()) + pad4(np.clip(B[:, 3] * 20, 1, 65535).astype('<u2').tobytes()) \
@@ -172,6 +180,6 @@ for h in sorted(hubs, key=lambda h: -h['tier']):
     seen.add(h['name']); H.append(h)
 H = H[:40]
 meta = {'id': rid, 'name': rname, 'w': round(WIDTH), 'h': round(HEIGHT), 'lat0': N_, 'lon0': W_, 'kx': KX, 'kz': KZ, 'cell': CELL, 'gw': GW, 'gh': GH,
-        'nRoads': len(roads), 'nBld': m, 'hubs': H, 'stations': stations[:400], 'roadNames': {str(k): v for k, v in names.items()}}
+        'nRoads': len(roads), 'nBld': m, 'hubs': H, 'stations': stations[:400], 'rstations': rstations, 'roadNames': {str(k): v for k, v in names.items()}}
 json.dump(meta, open(f'{out}/{rid}.json', 'w'), ensure_ascii=False, separators=(',', ':'))
 print(rid, 'features', n, 'roads', len(roads), 'buildings', m, 'hubs', len(H), 'stations', len(stations), 'raster', GW, GH, 'runs', len(rc))

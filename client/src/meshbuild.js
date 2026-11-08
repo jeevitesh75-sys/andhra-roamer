@@ -231,14 +231,43 @@ const BPAL = [
   [[0.9, 0.88, 0.8], [0.85, 0.78, 0.6], [0.8, 0.85, 0.9], [0.92, 0.7, 0.55]],
 ];
 /** list = world.buildingsInRect(...) objects; geometry is built relative to (ox,oz) so far-from-origin precision is not an issue */
+function pushFace(out, pts, col, ref) {
+  const [a, b, c] = pts; let nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+  let mx = 0, my = 0, mz = 0; for (const p of pts) { mx += p[0]; my += p[1]; mz += p[2]; } mx /= pts.length; my /= pts.length; mz /= pts.length;
+  if (nx * (mx - ref[0]) + ny * (my - ref[1]) + nz * (mz - ref[2]) < 0) { pts = pts.slice().reverse(); nx = -nx; ny = -ny; nz = -nz; }
+  const i0 = out.pos.length / 3;
+  for (const p of pts) { out.pos.push(p[0], p[1], p[2]); out.nor.push(nx, ny, nz); out.uv.push(0.04, 0.04); out.col.push(col[0], col[1], col[2]); }
+  for (let i = 1; i < pts.length - 1; i++) out.idx.push(i0, i0 + i, i0 + i + 1);
+}
+const ROOFS = [[0.62, 0.3, 0.2], [0.46, 0.46, 0.48], [0.52, 0.22, 0.18], [0.58, 0.4, 0.28]];
+/** gabled roof on a rectangular house (local frame -> world with c,s) */
+function pushGable(out, cx, cz, hw, hd, c, s, y1, rh, col) {
+  const O = 0.35, W = hw + O, D = hd + O, wx = (lx, lz) => cx + lx * c - lz * s, wz = (lx, lz) => cz + lx * s + lz * c, P = (lx, y, lz) => [wx(lx, lz), y, wz(lx, lz)], ref = [cx, y1 - 1, cz], top = y1 + rh;
+  if (hw >= hd) { // ridge along local x
+    pushFace(out, [P(-W, y1, -D), P(W, y1, -D), P(W, top, 0), P(-W, top, 0)], col, ref); pushFace(out, [P(-W, y1, D), P(W, y1, D), P(W, top, 0), P(-W, top, 0)], col, ref);
+    pushFace(out, [P(W, y1, -hd), P(W, y1, hd), P(W, top - 0.01, 0)], [0.85, 0.82, 0.76].map(lin), ref); pushFace(out, [P(-W, y1, -hd), P(-W, y1, hd), P(-W, top - 0.01, 0)], [0.85, 0.82, 0.76].map(lin), ref);
+  } else {
+    pushFace(out, [P(-W, y1, -D), P(-W, y1, D), P(0, top, D), P(0, top, -D)], col, ref); pushFace(out, [P(W, y1, -D), P(W, y1, D), P(0, top, D), P(0, top, -D)], col, ref);
+    pushFace(out, [P(-hw, y1, D), P(hw, y1, D), P(0, top - 0.01, D)], [0.85, 0.82, 0.76].map(lin), ref); pushFace(out, [P(-hw, y1, -D), P(hw, y1, -D), P(0, top - 0.01, -D)], [0.85, 0.82, 0.76].map(lin), ref);
+  }
+}
+/** list = world.buildingsInRect(...) objects; geometry is built relative to (ox,oz) so far-from-origin precision is not an issue */
 export function osmBuildings(list, ox, oz) {
   const out = { pos: [], nor: [], uv: [], col: [], idx: [] };
   for (const b of list) {
     const pal = BPAL[b.cls] || BPAL[0], hs = hash2(Math.round(b.x), Math.round(b.z), 11), c0 = pal[Math.floor(hs * pal.length) % pal.length], tint = 0.93 + hash2(Math.round(b.x), Math.round(b.z), 3) * 0.14;
     const col = [lin(c0[0] * tint), lin(c0[1] * tint), lin(c0[2] * tint)];
-    const y0 = -2, y1 = b.h;
-    pushBox(out, b.x - ox, b.z - oz, b.hw, b.hd, b.c, b.s, y0, y1, col, false, (y1 - y0) / 6.4, 1);
-    if (b.h > 4 && b.hw * b.hd > 30 && hs > 0.45) pushBox(out, b.x - ox + b.c * b.hw * 0.4, b.z - oz + b.s * b.hw * 0.4, 0.7, 0.7, b.c, b.s, y1, y1 + 1.5, [lin(0.28), lin(0.28), lin(0.3)], true, 1, 1); // water tank on the roof
+    const y0 = -2, y1 = b.h, bx = b.x - ox, bz = b.z - oz, area = 4 * b.hw * b.hd, dark = [lin(0.3), lin(0.3), lin(0.32)];
+    pushBox(out, bx, bz, b.hw, b.hd, b.c, b.s, y0, y1, col, false, (y1 - y0) / 6.4, 1);
+    const house = (b.cls === 0 || b.cls === 4) && area < 260 && y1 < 9 && b.hw > 1.6 && b.hd > 1.6;
+    if (house && hs > 0.28) { const rc = ROOFS[Math.floor(hs * 977) % ROOFS.length]; pushGable(out, bx, bz, b.hw, b.hd, b.c, b.s, y1, Math.min(b.hw, b.hd) * 0.55 + 0.6, rc.map(lin)); continue; }
+    const wx = (lx, lz) => bx + lx * b.c - lz * b.s, wz = (lx, lz) => bz + lx * b.s + lz * b.c;
+    if (area > 70 && y1 > 3.5) { const pc = [lin(c0[0] * 0.78), lin(c0[1] * 0.78), lin(c0[2] * 0.78)], t = 0.22, hh = 0.9;   // roof parapet
+      pushBox(out, wx(0, b.hd - t), wz(0, b.hd - t), b.hw, t, b.c, b.s, y1, y1 + hh, pc, true, 1, 1); pushBox(out, wx(0, -b.hd + t), wz(0, -b.hd + t), b.hw, t, b.c, b.s, y1, y1 + hh, pc, true, 1, 1);
+      pushBox(out, wx(b.hw - t, 0), wz(b.hw - t, 0), t, b.hd - 2 * t, b.c, b.s, y1, y1 + hh, pc, true, 1, 1); pushBox(out, wx(-b.hw + t, 0), wz(-b.hw + t, 0), t, b.hd - 2 * t, b.c, b.s, y1, y1 + hh, pc, true, 1, 1); }
+    if (b.h > 13 && b.hw > 4 && b.hd > 4) pushBox(out, bx, bz, b.hw * 0.5, b.hd * 0.5, b.c, b.s, y1, y1 + 2.8, [lin(c0[0] * 0.9), lin(c0[1] * 0.9), lin(c0[2] * 0.9)], false, 0.5, 1);      // penthouse
+    else if (b.h > 4 && area > 30 && hs > 0.45) pushBox(out, wx(b.hw * 0.4, 0), wz(b.hw * 0.4, 0), 0.7, 0.7, b.c, b.s, y1, y1 + 1.5, dark, true, 1, 1);  // water tank
   }
   if (!out.pos.length) return null;
   return { pos: new Float32Array(out.pos), nor: new Float32Array(out.nor), uv: new Float32Array(out.uv), col: new Float32Array(out.col), idx: new Uint32Array(out.idx) };
@@ -255,4 +284,38 @@ export function osmRoads(runs, ox, oz) {
     (r.cls <= 4 ? hi : lo).push(g);
   }
   return { hi: hi.length ? mergeGeos(hi, ['pos', 'nor', 'uv']) : null, lo: lo.length ? mergeGeos(lo, ['pos', 'nor', 'uv']) : null };
+}
+
+/** bridge decks, parapets and piers: roads flagged bridge in OSM, plus any road segment that crosses water */
+export function osmBridges(world, runs, ox, oz) {
+  const out = { pos: [], nor: [], uv: [], col: [], idx: [] }, conc = [lin(0.66), lin(0.65), lin(0.62)], rail = [lin(0.8), lin(0.8), lin(0.78)];
+  for (const u of runs) {
+    const r = u.road, p = r.pts;
+    for (let i = u.a; i < u.b; i++) {
+      const ax = p[2 * i], az = p[2 * i + 1], bx = p[2 * i + 2], bz = p[2 * i + 3], mx = (ax + bx) / 2, mz = (az + bz) / 2, L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.5 || !(r.bridge || world.heightAt(mx, mz) < -0.8)) continue;
+      const dx = (bx - ax) / L, dz = (bz - az) / L, c = dz, s = -dx, hw = r.halfW, X = mx - ox, Z = mz - oz, nx = c, nz = s; // local x axis = (c,s)
+      pushBox(out, X, Z, hw + 0.35, L / 2 + 0.05, c, s, -0.9, 0.0, conc, true, 1, 1);                       // deck
+      for (const sd of [-1, 1]) pushBox(out, X + nx * (hw + 0.2) * sd, Z + nz * (hw + 0.2) * sd, 0.18, L / 2 + 0.05, c, s, 0, 1.0, rail, true, 1, 1);   // parapet
+      if (Math.floor((r.cum[i] + 0.1) / 14) !== Math.floor((r.cum[i + 1] + 0.1) / 14) || L > 14) for (const sd of [-0.5, 0.5]) pushBox(out, X + nx * hw * sd, Z + nz * hw * sd, 0.55, 0.55, c, s, -2.3, -0.9, conc, true, 1, 1);   // piers
+    }
+  }
+  if (!out.pos.length) return null;
+  return { pos: new Float32Array(out.pos), nor: new Float32Array(out.nor), uv: new Float32Array(out.uv), col: new Float32Array(out.col), idx: new Uint32Array(out.idx) };
+}
+/** railway track: gravel bed + two steel rails. returns {bed, steel} geometries (local to ox,oz) */
+export function osmRails(runs, ox, oz) {
+  const bed = [], steel = [];
+  for (const u of runs) {
+    const r = u.r, m = u.b - u.a + 1; if (m < 2) continue;
+    const xs = new Float64Array(m), zs = new Float64Array(m), ys = new Float64Array(m);
+    for (let i = 0; i < m; i++) { xs[i] = r.pts[2 * (u.a + i)] - ox; zs[i] = r.pts[2 * (u.a + i) + 1] - oz; }
+    bed.push(ribbon(xs, zs, ys, 1.9, 6, 0.03));
+    for (const off of [-0.72, 0.72]) {
+      const ox2 = new Float64Array(m), oz2 = new Float64Array(m);
+      for (let i = 0; i < m; i++) { const i0 = Math.max(0, i - 1), i1 = Math.min(m - 1, i + 1); let tx = xs[i1] - xs[i0], tz = zs[i1] - zs[i0]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l; ox2[i] = xs[i] + tz * off; oz2[i] = zs[i] - tx * off; }
+      steel.push(ribbon(ox2, oz2, ys, 0.07, 6, 0.1));
+    }
+  }
+  return { bed: bed.length ? mergeGeos(bed, ['pos', 'nor', 'uv']) : null, steel: steel.length ? mergeGeos(steel, ['pos', 'nor', 'uv']) : null };
 }

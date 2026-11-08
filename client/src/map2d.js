@@ -29,7 +29,7 @@ export class MapView {
     const view = full
       ? (() => { const z = opts.zoom || 1, sc = Math.min(W / WD.w, H / WD.h) * 0.97 * z, mx = opts.mcx ?? WD.w / 2, mz = opts.mcz ?? WD.h / 2; return { sc, ox: W / 2 - mx * sc, oz: H / 2 - mz * sc, z }; })()
       : (() => { const sc = Math.min(W, H) / (opts.radius * 2); return { sc, ox: W / 2 - opts.cx * sc, oz: H / 2 - opts.cz * sc }; })();
-    const X = x => x * view.sc + view.ox, Z = z => z * view.sc + view.oz, sc = view.sc;
+    this.view = view; const X = x => x * view.sc + view.ox, Z = z => z * view.sc + view.oz, sc = view.sc;
     ctx.save(); ctx.clearRect(0, 0, W, H);
     if (!full) { ctx.beginPath(); ctx.arc(W / 2, H / 2, W / 2 - 1, 0, 7); ctx.clip(); }
     ctx.fillStyle = '#e6e8cc'; ctx.fillRect(0, 0, W, H);
@@ -74,6 +74,14 @@ export class MapView {
       ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, z, 8 + 2 * Math.sin(performance.now() / 250), 0, 7); ctx.stroke();
       ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(x, z, 3, 0, 7); ctx.fill();
     }
+    if (opts.wp) {   // waypoint pin + dashed guide line
+      const x = X(opts.wp.x), z = Z(opts.wp.z);
+      if (opts.me) { ctx.setLineDash([6, 6]); ctx.strokeStyle = 'rgba(59,157,255,.85)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(X(opts.me.x), Z(opts.me.z)); ctx.lineTo(x, z); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.fillStyle = '#3b9dff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, z - 9, 8, 0, 7); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x - 5, z - 4); ctx.lineTo(x, z + 3); ctx.lineTo(x + 5, z - 4); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, z - 9, 3, 0, 7); ctx.fill();
+    }
+    // railway stations
+    ctx.fillStyle = '#1b4f9c'; for (const s of w.railStations || []) { const x = X(s.x), z = Z(s.z); if (x < 0 || z < 0 || x > W || z > H) continue; ctx.fillRect(x - 4, z - 4, 8, 8); ctx.fillStyle = '#fff'; ctx.fillRect(x - 2, z - 2, 4, 4); ctx.fillStyle = '#1b4f9c'; if (full ? (opts.zoom || 1) > 2.5 : true) { ctx.font = '600 9px system-ui'; ctx.textAlign = 'center'; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 3; ctx.strokeText(s.name, x, z - 9); ctx.fillText(s.name, x, z - 9); } }
     // other players
     for (const p of opts.players || []) {
       ctx.fillStyle = p.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(X(p.x), Z(p.z), 4, 0, 7); ctx.fill(); ctx.stroke();

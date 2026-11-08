@@ -2,7 +2,7 @@ import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/i
 import { readFileSync } from 'fs';
 import { spawn } from 'child_process';
 import http from 'http'; import path from 'path'; import fs from 'fs';
-const names = [...new Set([...['ACESFilmicToneMapping','BackSide','BoxGeometry','BufferAttribute','BufferGeometry','CanvasTexture','ClampToEdgeWrapping','Color','ConeGeometry','CylinderGeometry','DirectionalLight','DoubleSide','ExtrudeGeometry','FogExp2','Group','HemisphereLight','InstancedMesh','Mesh','MeshBasicMaterial','MeshPhysicalMaterial','MeshStandardMaterial','Object3D','PCFSoftShadowMap','PMREMGenerator','PerspectiveCamera','PlaneGeometry','RepeatWrapping','RingGeometry','SRGBColorSpace','ShaderMaterial','Shape','SphereGeometry','SpotLight','Sprite','SpriteMaterial','Vector3','WebGLRenderer','Scene','LinearSRGBColorSpace','NoToneMapping','LinearFilter','Float32BufferAttribute','AdditiveBlending']])];
+const names = [...new Set([...['ACESFilmicToneMapping','BackSide','BoxGeometry','BufferAttribute','BufferGeometry','CanvasTexture','ClampToEdgeWrapping','Color','ConeGeometry','CylinderGeometry','DirectionalLight','DoubleSide','ExtrudeGeometry','FogExp2','Group','HemisphereLight','InstancedMesh','Mesh','MeshBasicMaterial','MeshPhysicalMaterial','MeshStandardMaterial','Object3D','PCFSoftShadowMap','PMREMGenerator','PerspectiveCamera','PlaneGeometry','RepeatWrapping','RingGeometry','SRGBColorSpace','ShaderMaterial','Shape','SphereGeometry','SpotLight','Sprite','SpriteMaterial','Vector3','WebGLRenderer','Scene','LinearSRGBColorSpace','NoToneMapping','LinearFilter','Float32BufferAttribute','AdditiveBlending','Matrix4']])];
 const mock = readFileSync('tests/mock-three.mjs','utf8') + `\nconst T=makeMockThree().THREE;\n` + names.map(n=>`export const ${n}=T.${n};`).join('\n');
 const srv = spawn('node',['server/server.js'],{env:{...process.env,PORT:'8099'}});
 const root='client'; const mime={'.js':'text/javascript','.html':'text/html','.css':'text/css'};
@@ -24,11 +24,16 @@ console.log('A after S (should be braking then reversing)',await info(A), 'u=',a
 console.log('early errs',A.errs.slice(0,6),B.errs.slice(0,3));
 console.log('A',await info(A)); console.log('B',await info(B));
 await A.pg.screenshot({path:'/tmp/claude-0/-home-claude/37f8f6fa-367a-55a3-a419-14b2d6ce60d5/scratchpad/hud.png'});
+console.log('peds', await A.pg.evaluate(()=>window.__game.crowd.list.length), 'rail stations', await A.pg.evaluate(()=>window.__game.world.railStations.length));
+await A.pg.evaluate(()=>{const g=window.__game; g.veh.u=14; g.veh.speed=14; g.crowd.list.push({kind:'human',x:g.veh.x+Math.sin(g.veh.h)*2,z:g.veh.z+Math.cos(g.veh.h)*2,h:0,road:g.crowd.list[0].road,s:0,off:0,dir:1,state:'walk',t:0,phase:0,lift:0,lie:0,vy:0,hx:0,hz:0,sc:1,idle:99,speed:1,c1:'#fff',c2:'#000'});});
+await A.pg.waitForTimeout(1500); console.log('police active', await A.pg.evaluate(()=>window.__game.police.active), 'wanted banner hidden?', await A.pg.evaluate(()=>document.getElementById('wanted').hidden));
 console.log('clock', await A.pg.textContent('#clock'));
 await A.pg.click('#minimap'); console.log('miniR after tap', await A.pg.evaluate(()=>window.__game.miniR));
 await A.pg.keyboard.press('KeyM'); await A.pg.waitForTimeout(300);
 await A.pg.screenshot({path:'/tmp/claude-0/-home-claude/37f8f6fa-367a-55a3-a419-14b2d6ce60d5/scratchpad/map1.png'});
 await A.pg.click('#mapZin'); await A.pg.click('#mapZin'); await A.pg.click('#mapZin'); await A.pg.click('#mapZin'); await A.pg.waitForTimeout(300);
+await A.pg.click('#bigcanvas',{position:{x:400,y:300}}); await A.pg.waitForTimeout(300);
+console.log('waypoint', await A.pg.evaluate(()=>window.__game.wp), 'wpBox hidden?', await A.pg.evaluate(()=>document.getElementById('wpBox').hidden));
 console.log('map zoom', await A.pg.evaluate(()=>window.__game.mapV));
 await A.pg.screenshot({path:'/tmp/claude-0/-home-claude/37f8f6fa-367a-55a3-a419-14b2d6ce60d5/scratchpad/map2.png'});
 console.log('errors A',A.errs.slice(0,5)); console.log('errors B',B.errs.slice(0,5));

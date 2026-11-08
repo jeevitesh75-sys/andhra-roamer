@@ -68,3 +68,10 @@ canvas#bigcanvas{width:auto;height:auto;max-width:100%;max-height:72vh;margin:0 
 
 canvas#bigcanvas{touch-action:none;cursor:grab}#minimap{pointer-events:auto;cursor:zoom-in}
 #bigmap .rowEnd button#mapZin,#bigmap .rowEnd button#mapZout{width:44px;font-size:20px;padding:6px 0}
+
+#wpBox{position:fixed;top:56px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(20,40,70,.82);border:1px solid #3b9dff;border-radius:14px;padding:5px 12px;color:#fff;z-index:6;pointer-events:none}
+#wpBox #wpArrow{font-size:24px;color:#3b9dff;transition:transform .08s}#wpBox #wpDist{font-weight:700;min-width:56px}#wpBox button{pointer-events:auto;background:none;border:0;color:#9db7d5;font-size:16px}
+#wanted{position:fixed;top:92px;left:50%;transform:translateX(-50%);background:rgba(160,20,20,.88);border:1px solid #ff6b6b;border-radius:12px;padding:6px 14px;color:#fff;font-weight:700;z-index:6;animation:pulse 1s infinite alternate}
+@keyframes pulse{from{background:rgba(160,20,20,.88)}to{background:rgba(30,60,160,.88)}}
+.hintTap{font-size:12px;color:var(--mut);margin-right:auto}
+.is-touch #wpBox{top:8px;left:46%}.is-touch #wanted{top:44px}

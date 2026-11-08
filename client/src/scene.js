@@ -1,5 +1,5 @@
 // three.js world renderer. THREE is injected so the module has no import-map dependency.
-import { CHUNK, terrainChunk, osmBuildings, osmRoads, roundTreeGeometry, palmGeometry, treesForChunk } from './meshbuild.js';
+import { CHUNK, terrainChunk, osmBuildings, osmRoads, osmBridges, osmRails, roundTreeGeometry, palmGeometry, treesForChunk } from './meshbuild.js';
 import { createModels } from './models.js';
 import { smooth, lerp, clamp, mulberry32 } from './noise.js';
 
@@ -44,7 +44,7 @@ export class Scene3D {
     this.cHorizon = new T.Color(); this.cZenith = new T.Color(); this.cSun = new T.Color(); this.tmpC = new T.Color();
     this.models3d = createModels(T);
     this._textures(); this._materials(); this._sky(); this._lights(); this._water(); this._envMap();
-    this._landmarks(); this._labels(); this._stations(); this._initLamps(); this._npcInit(); this._beacon();
+    this._landmarks(); this._labels(); this._stations(); this._initLamps(); this._initExtras(); this._npcInit(); this._beacon();
     this.resize();
   }
 
@@ -240,6 +240,55 @@ export class Scene3D {
     mk(this.lampHead, this.mLampHead, (d, q) => { d.position.set(q.x + q.inx * 0.7, 8.1, q.z + q.inz * 0.7); d.rotation.set(0, q.h, 0); d.scale.set(1, 1, 1); });
     mk(this.lampPool, this.mLampPool, (d, q) => { d.position.set(q.x + q.inx * q.hw * 0.7, 0.25, q.z + q.inz * q.hw * 0.7); d.rotation.set(-Math.PI / 2, 0, 0); d.scale.set(1, 1, 1); });
   }
+  /** railway materials, railway stations, waypoint beacon, pedestrians/animals */
+  _initExtras() {
+    const T = this.T, w = this.world;
+    this.mRailBed = this._reg(new T.MeshStandardMaterial({ color: 0x716a61, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 0.2);
+    this.mRailSteel = this._reg(new T.MeshStandardMaterial({ color: 0xb4bac0, roughness: 0.35, metalness: 0.8, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 0.9);
+    // waypoint beacon (blue)
+    this.wpBeacon = new T.Group(); this.wpBeacon.visible = false;
+    const wm = new T.MeshBasicMaterial({ color: 0x3b9dff, transparent: true, opacity: 0.3, depthWrite: false, side: T.DoubleSide, fog: false });
+    const wp = new T.Mesh(new T.CylinderGeometry(5, 5, 220, 20, 1, true), wm); wp.position.y = 110; const wr = new T.Mesh(new T.RingGeometry(10, 13, 36), wm); wr.rotation.x = -Math.PI / 2; wr.position.y = 0.4;
+    this.wpBeacon.add(wp); this.wpBeacon.add(wr); this.scene.add(this.wpBeacon);
+    // railway stations: platform + canopy + building + name board, oriented along the nearest track
+    const stoneM = this._reg(new T.MeshStandardMaterial({ color: 0xcfc6b4, roughness: 0.9 }), 0.4), roofM = this._reg(new T.MeshStandardMaterial({ color: 0x8a2f2a, roughness: 0.8 }), 0.4), bldM = this._reg(new T.MeshStandardMaterial({ color: 0xe9dcc0, roughness: 0.9 }), 0.4), postM = this._reg(new T.MeshStandardMaterial({ color: 0x555a60, roughness: 0.6 }), 0.4);
+    this.railStationGroups = [];
+    for (const st of w.railStations || []) {
+      const g = new T.Group(), h = st.rail ? st.rail.h : 0, px = st.rail ? st.rail.x : st.x, pz = st.rail ? st.rail.z : st.z;
+      const side = st.rail && ((st.x - px) * Math.cos(h) - (st.z - pz) * Math.sin(h)) < 0 ? -1 : 1, add = (geo, mat, x, y, z) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
+      add(new T.BoxGeometry(5.5, 1.1, 90), stoneM, side * 4.8, 0.55, 0);                 // platform
+      add(new T.BoxGeometry(5.2, 0.3, 70), roofM, side * 5.6, 4.6, 0);                  // canopy
+      for (let z = -30; z <= 30; z += 15) add(new T.CylinderGeometry(0.15, 0.15, 3.6, 8), postM, side * 7.6, 2.9, z);
+      add(new T.BoxGeometry(12, 5.5, 16), bldM, side * 14.5, 2.75, 0); add(new T.BoxGeometry(12.6, 0.5, 16.6), roofM, side * 14.5, 5.8, 0);   // station building
+      const tex = this._canvasTex(512, 96, (x, ww, hh) => { x.fillStyle = '#1b4f9c'; x.fillRect(0, 0, ww, hh); x.strokeStyle = '#fff'; x.lineWidth = 6; x.strokeRect(5, 5, ww - 10, hh - 10); x.fillStyle = '#fff'; x.font = 'bold 46px system-ui, sans-serif'; x.textAlign = 'center'; x.fillText(st.name.slice(0, 22).toUpperCase(), ww / 2, 62); });
+      tex.wrapS = tex.wrapT = T.ClampToEdgeWrapping; const bm = new T.MeshBasicMaterial({ map: tex, side: T.DoubleSide }); this._reg(bm, 0.8);
+      const board = new T.Mesh(new T.PlaneGeometry(10, 1.9), bm); board.position.set(side * 5.6, 3.3, 0); board.rotation.y = Math.PI / 2; g.add(board);
+      g.position.set(px, 0, pz); g.rotation.y = h; this.scene.add(g); this.railStationGroups.push(g);
+      if (this.labels) { const lt = this._canvasTex(512, 128, (x, ww, hh) => { x.fillStyle = 'rgba(27,79,156,0.88)'; x.fillRect(4, 4, ww - 8, hh - 8); x.fillStyle = '#fff'; x.font = 'bold 44px system-ui, sans-serif'; x.textAlign = 'center'; x.fillText('\u{1F689} ' + st.name.slice(0, 20), ww / 2, 76); }); lt.wrapS = lt.wrapT = T.ClampToEdgeWrapping; const sp = new T.Sprite(new T.SpriteMaterial({ map: lt, transparent: true, fog: false, depthWrite: false })); sp.scale.set(120, 30, 1); sp.position.set(px, 45, pz); this.scene.add(sp); this.labels.push({ s: sp, c: st }); }
+    }
+    // people & animals (instanced boxes, recoloured per instance)
+    const mkI = (geo, n) => { const im = new T.InstancedMesh(geo, this._reg(new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85 }), 0.5), n); im.frustumCulled = false; im.castShadow = true; im.count = 0; this.scene.add(im); return im; };
+    this.pedMax = 90; this.aniMax = 40;
+    this.pedI = { torso: mkI(new T.BoxGeometry(0.5, 0.65, 0.28), this.pedMax), legs: mkI(new T.BoxGeometry(0.34, 0.8, 0.24), this.pedMax), head: mkI(new T.BoxGeometry(0.22, 0.25, 0.22), this.pedMax) };
+    this.aniI = { body: mkI(new T.BoxGeometry(0.7, 0.8, 1.5), this.aniMax), legs: mkI(new T.BoxGeometry(0.5, 0.65, 1.2), this.aniMax), head: mkI(new T.BoxGeometry(0.32, 0.4, 0.55), this.aniMax) };
+    this._pd = new T.Object3D(); this._pp = new T.Object3D(); this._pm = new T.Matrix4(); this._pc = new T.Color();
+  }
+  setWaypoint(t) { if (!t) { this.wpBeacon.visible = false; return; } this.wpBeacon.visible = true; this.wpBeacon.position.set(t.x, 0, t.z); }
+  /** list of {kind:'human'|'cow'|'dog'|'goat', x,z,h, lift, lie (0..1 fallen), phase, c1, c2} */
+  updatePeds(list) {
+    const P = this._pp, d = this._pd, M = this._pm, col = this._pc; let hn = 0, an = 0;
+    const part = (im, i, ox, oy, oz, sx, sy, sz, c) => { d.position.set(ox, oy, oz); d.rotation.set(0, 0, 0); d.scale.set(sx, sy, sz); d.updateMatrix(); M.multiplyMatrices(P.matrix, d.matrix); im.setMatrixAt(i, M); if (c) { col.set(c); im.setColorAt(i, col); } };
+    for (const p of list) {
+      P.position.set(p.x, p.lift || 0, p.z); P.rotation.order = 'YXZ'; P.rotation.set(-(p.lie || 0) * 1.45, p.h, 0); P.scale.set(1, 1, 1); P.updateMatrix();
+      const bob = p.lie ? 0 : Math.sin(p.phase || 0) * 0.04;
+      if (p.kind === 'human') { if (hn >= this.pedMax) continue; const sc = p.sc || 1; P.scale.set(sc, sc, sc); P.updateMatrix();
+        part(this.pedI.legs, hn, 0, 0.4, 0, 1, 1, 1, p.c2); part(this.pedI.torso, hn, 0, 1.12 + bob, 0, 1, 1, 1, p.c1); part(this.pedI.head, hn, 0, 1.6 + bob, 0, 1, 1, 1, p.skin || '#a9744f'); hn++; }
+      else { if (an >= this.aniMax) continue; const k = p.kind === 'cow' ? 1 : p.kind === 'goat' ? 0.55 : 0.36; P.scale.set(k, k, k); P.updateMatrix();
+        part(this.aniI.legs, an, 0, 0.3, 0, 1, 1, 1, p.c2); part(this.aniI.body, an, 0, 0.98 + bob, 0, 1, 1, 1, p.c1); part(this.aniI.head, an, 0, 1.35 + bob, 0.95, 1, 1, 1, p.c1); an++; }
+    }
+    for (const im of [...Object.values(this.pedI)]) { im.count = hn; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+    for (const im of [...Object.values(this.aniI)]) { im.count = an; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+  }
   _beacon() {
     const T = this.T;
     this.beacon = new T.Group(); this.beacon.visible = false;
@@ -294,7 +343,11 @@ export class Scene3D {
       const bg = osmBuildings(w.buildingsInRect(x0, z0, x1, z1), x0, z0);
       if (bg) { const bm = new T.Mesh(this._geo(bg), this.mBuilding); bm.position.set(x0, 0, z0); bm.castShadow = true; bm.receiveShadow = true; grp.add(bm); }
       this._chunkLamps(grp, x0, z0);
-      const rg = osmRoads(w.roadsInRect(x0, z0, x1, z1), x0, z0);
+      const runs = w.roadsInRect(x0, z0, x1, z1), rg = osmRoads(runs, x0, z0), brg = osmBridges(w, runs, x0, z0);
+      if (brg) { const bm = new T.Mesh(this._geo(brg), this.mBuilding); bm.position.set(x0, 0, z0); bm.castShadow = true; bm.receiveShadow = true; grp.add(bm); }
+      const rl = osmRails(w.railsInRect(x0, z0, x1, z1), x0, z0);
+      if (rl.bed) { const rm = new T.Mesh(this._geo(rl.bed), this.mRailBed); rm.position.set(x0, 0, z0); rm.receiveShadow = true; grp.add(rm); }
+      if (rl.steel) { const rm = new T.Mesh(this._geo(rl.steel), this.mRailSteel); rm.position.set(x0, 0, z0); grp.add(rm); }
       if (rg.lo) { const rm = new T.Mesh(this._geo(rg.lo), this.mStreet); rm.position.set(x0, 0, z0); rm.receiveShadow = true; grp.add(rm); }
       if (rg.hi) { const rm = new T.Mesh(this._geo(rg.hi), this.mHighway); rm.position.set(x0, 0, z0); rm.receiveShadow = true; grp.add(rm); }
     }

@@ -11,9 +11,9 @@ const LAND_COL = [[0.56, 0.58, 0.34], [0.2, 0.33, 0.36], [0.6, 0.56, 0.5], [0.5,
 async function fetchBuf(url) { const r = await fetch(url); if (!r.ok) throw new Error(`Could not load ${url} (${r.status})`); return r.arrayBuffer(); }
 export async function loadRegionData(id, base, onProgress = () => {}) {
   const meta = await (await fetch(`${base}/${id}.json`)).json(); onProgress(0.15);
-  const [roads, bld, land] = await Promise.all([fetchBuf(`${base}/${id}.roads.bin`), fetchBuf(`${base}/${id}.bld.bin`), fetchBuf(`${base}/${id}.land.bin`)]);
+  const [roads, bld, land, rail] = await Promise.all([fetchBuf(`${base}/${id}.roads.bin`), fetchBuf(`${base}/${id}.bld.bin`), fetchBuf(`${base}/${id}.land.bin`), fetchBuf(`${base}/${id}.rail.bin`).catch(() => null)]);
   onProgress(0.5);
-  return { meta, roads, bld, land };
+  return { meta, roads, bld, land, rail };
 }
 
 /** data = {meta, roads:ArrayBuffer, bld:ArrayBuffer, land:ArrayBuffer} */
@@ -109,6 +109,34 @@ export function createOsmWorld(data) {
     return runs;
   }
 
+  /* ---------------- railways ---------------- */
+  const rails = [];
+  if (data.rail && data.rail.byteLength > 8) {
+    const dv = new DataView(data.rail), n = dv.getUint32(0, true), np = dv.getUint32(4, true), st = new Uint32Array(data.rail, 8, n + 1), pts = new Float32Array(data.rail, 8 + (n + 1) * 4, np * 2);
+    for (let i = 0; i < n; i++) { const a = st[i], b = st[i + 1]; if (b - a >= 2) rails.push({ a, b, pts: pts.subarray(a * 2, b * 2), n: b - a }); }
+  }
+  /** rail runs whose segment midpoints lie in the rect (one tile owns each segment) */
+  function railsInRect(x0, z0, x1, z1) {
+    const runs = [];
+    for (const r of rails) {
+      let cur = null; const p = r.pts;
+      for (let i = 0; i < r.n - 1; i++) {
+        const mx = (p[2 * i] + p[2 * i + 2]) / 2, mz = (p[2 * i + 1] + p[2 * i + 3]) / 2;
+        if (mx < x0 || mx >= x1 || mz < z0 || mz >= z1) { cur = null; continue; }
+        if (cur && cur.b === i) cur.b = i + 1; else { cur = { r, a: i, b: i + 1 }; runs.push(cur); }
+      }
+    }
+    for (const u of runs) { if (u.a > 0) u.a--; if (u.b < u.r.n - 1) u.b++; }
+    return runs;
+  }
+  function railNearest(x, z, maxD = 400) {
+    let best = null, bd = maxD * maxD;
+    for (const r of rails) { const p = r.pts; for (let i = 0; i < r.n - 1; i++) {
+      const ax = p[2 * i], az = p[2 * i + 1], bx = p[2 * i + 2] - ax, bz = p[2 * i + 3] - az, l2 = bx * bx + bz * bz || 1e-9; let t = ((x - ax) * bx + (z - az) * bz) / l2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = ax + bx * t, pz = az + bz * t, d2 = (x - px) ** 2 + (z - pz) ** 2; if (d2 < bd) { bd = d2; best = { x: px, z: pz, h: Math.atan2(bx, bz), d: Math.sqrt(d2) }; } } }
+    return best;
+  }
+
   /* ---------------- buildings ---------------- */
   const bd = new DataView(data.bld), nB = bd.getUint32(0, true); let bo = 4;
   const bx = new Float32Array(data.bld, bo, nB); bo += nB * 4; const bz = new Float32Array(data.bld, bo, nB); bo += nB * 4;
@@ -177,7 +205,8 @@ export function createOsmWorld(data) {
   const stations = meta.stations || [];
   const trafficRoads = roads.filter(r => r.cls <= 4 && r.len > 500);
 
-  return { meta, WORLD, roads, trafficRoads, cities, cityByName, stations, landClass: lc, landW: GW, landH: GH, land,
+  const railStations = (meta.rstations || []).map(s => ({ ...s, rail: railNearest(s.x, s.z, 600) }));
+  return { meta, WORLD, roads, trafficRoads, rails, railsInRect, railNearest, railStations, cities, cityByName, stations, landClass: lc, landW: GW, landH: GH, land,
     heightAt, naturalHeight, baseHeight: heightAt, nearestRoad, snapToRoad, roadPoint, roadsInRect, buildingsNear, buildingsInRect, groundColor, surfaceAt,
     nearestCity, cityAt, isStreet: () => false, coastDx: () => 99999, hills: [], rivers: [], coast: [[0, 0], [0, 1]], landmarks: [], buildings: [], BLOCK: 64, STREET_HALF: 3.5 };
 }
