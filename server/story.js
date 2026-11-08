@@ -68,7 +68,7 @@ class Story {
   _enter(ch, step) {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     const s = stepOf(ch, step); if (!s) { this._finish(); return; }
-    this.ch = ch; this.step = step; this.id = s.id; this.t = Date.now(); this.done = new Set(); this.ready = new Set(); this.votes = new Map();
+    this.ch = ch; this.step = step; this.id = s.id; this.t = Date.now(); this.done = new Set(); this.doneAt = new Map(); this.ready = new Set(); this.votes = new Map();
     const ms = s.need === 'cut' ? CUT_TIMEOUT : s.need === 'vote' ? VOTE_TIMEOUT : 0;
     if (ms) { const id = s.id; this.timer = setTimeout(() => { if (this.on && this.id === id) this._resolve(true); }, ms); if (this.timer.unref) this.timer.unref(); }
     this.push();
@@ -104,14 +104,14 @@ class Story {
     }
   }
   _options(s) { return s.opts.filter(o => o !== 'secret' || this.choices.c4_choice === 'protect'); }
-  markDone(p, id) { if (!this.on || id !== this.id || !this.roles[p.id]) return; const s = stepOf(this.ch, this.step); if (!s || s.need !== 'all') return; this.done.add(p.id); this.push(); this._resolve(); }
+  markDone(p, id) { if (!this.on || id !== this.id || !this.roles[p.id]) return; const s = stepOf(this.ch, this.step); if (!s || s.need !== 'all') return; this.done.add(p.id); this.doneAt.set(p.id, Date.now()); this.push(); this._resolve(); }
   markReady(p, id) { if (!this.on || id !== this.id || !this.roles[p.id]) return; const s = stepOf(this.ch, this.step); if (!s || s.need !== 'cut') return; this.ready.add(p.id); this.push(); this._resolve(); }
   vote(p, id, val) {
     if (!this.on || id !== this.id || !this.roles[p.id]) return; const s = stepOf(this.ch, this.step); if (!s || s.need !== 'vote') return;
     if (!this._options(s).includes(val)) return; this.votes.set(p.id, val); this.push(); this._resolve();
   }
   /** host safety valve: skip the current step (stuck player, leaver, testing) */
-  skip(p) { if (!this.on || p.id !== this.hostId()) return; const s = stepOf(this.ch, this.step); if (!s) return; if (s.need === 'vote') this._resolve(true); else this.advance(); }
+  skip(p) { if (!this.on) return; const cur0 = stepOf(this.ch, this.step); const waited = this.done.has(p.id) && cur0 && cur0.need === 'all' && Date.now() - (this.doneAt.get(p.id) || 0) > 20000; if (p.id !== this.hostId() && !waited) return; const s = stepOf(this.ch, this.step); if (!s) return; if (s.need === 'vote') this._resolve(true); else this.advance(); }
   /** a player left: free their character and re-check the step */
   leave(p) { const had = !!this.roles[p.id]; delete this.roles[p.id]; this.done.delete(p.id); this.ready.delete(p.id); this.votes.delete(p.id); if (this.on) { this._resolve(); if (this.on && this.actors().length === 0) { /* nobody left: stay on this step, wait for someone to join */ } } if (had || this.on) this.push(); }
   /** a player joined mid-story: give them a free character if one exists */

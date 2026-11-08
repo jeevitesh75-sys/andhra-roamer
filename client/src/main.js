@@ -8,13 +8,11 @@ import { Net, FLAG } from './net.js';
 import { MapView } from './map2d.js';
 import { generateOffers, JobRunner, FUEL_PRICE, rankFor } from './jobs.js';
 import { AudioFX } from './audio.js';
-import { toggleFullscreen, Voice, Team } from './extras.js';
 import { Characters } from './characters.js';
-import { Speech } from './speech.js';
-import { HudEdit } from './hudedit.js';
 import { ParkedLot, distToVehicle } from './parked.js';
 import { Law } from './law.js';
 import { Joystick } from './joystick.js';
+import { Voice } from './voice.js';
 import { StoryClient } from './story.js';
 import { ROLES, NPCS } from './storydata.js';
 
@@ -66,7 +64,7 @@ function buildMenu() {
   swatches($('colors'), c => { G.profile.color = c; });
   const vehBtns = (host, onPick) => { [...host.querySelectorAll('button')].forEach(b => { b.classList.toggle('sel', b.dataset.veh === G.profile.veh); b.onclick = () => { onPick(b.dataset.veh); [...host.querySelectorAll('button')].forEach(k => k.classList.toggle('sel', k === b)); }; }); };
   vehBtns($('vehPick'), v => { G.profile.veh = v; });
-  $('startBtn').onclick = startGame; if ($('fsMenu')) $('fsMenu').onclick = () => { if (!toggleFullscreen()) toast('Full screen is not supported here', 2500); };
+  $('startBtn').onclick = startGame;
   $('storyBtn').onclick = () => { try { sessionStorage.setItem('wantStory', '1'); } catch (e) { /* ignore */ } startGame(); };
   try { if (sessionStorage.getItem('wantStory') === '1') setTimeout(startGame, 400); } catch (e) { /* ignore */ }
   $('name').addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
@@ -110,19 +108,20 @@ async function startGame() {
   let left = 1; while (left > 0) { left = G.scene.updateChunks(dp.x, dp.z, 4); progress('Rendering the world...', 0.5 + 0.5 * (1 - Math.min(1, left / 60))); await nextFrame(); }
   G.vcolor = prof.color; G.scene.model('me', prof.veh, G.vcolor);
   $('loading').hidden = true; $('hud').hidden = false;
-  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) { $('touch').hidden = false; G.touch.enabled = true; $('hud').classList.add('is-touch'); document.documentElement.classList.add('is-touch'); }
-  setFootMode(!!G.foot); if (!G.joy) G.joy = new Joystick($('joyZone'), $('joyBase'), $('joyKnob')); 
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) { $('touch').hidden = false; G.touch.enabled = true; $('hud').classList.add('is-touch'); document.body.classList.add('is-touch'); }
+  setFootMode(!!G.foot); if (!G.joy) G.joy = new Joystick($('joyZone'), $('joyBase'), $('joyKnob'));
   G.swatches($('garColors'), c2 => { G.profile.color = c2; applyVehicleChange(); });
   G.vehBtns($('garVeh'), v => { G.profile.veh = v; applyVehicleChange(); });
   persist();
   // network
-  if (!G.net) G.net = new Net({ onStatus: onNetStatus, onChat: m => addChat(m.name, m.text), onJoin: r => { toast(r.name + ' joined'); G.voice && G.voice.onJoin(r.id); }, onLeave: r => { toast(r.name + ' left'); G.voice && G.voice.onLeave(r.id); G.scene.removeModel('r' + r.id); G.chars.remove('r' + r.id); dropTag(r.id); },
+  if (!G.net) G.net = new Net({ onStatus: onNetStatus, onChat: m => addChat(m.name, m.text), onJoin: r => { toast(r.name + ' joined'); if (G.voice && G.voice.on) G.voice.hello(r.id); }, onLeave: r => { toast(r.name + ' left'); G.scene.removeModel('r' + r.id); G.chars.remove('r' + r.id); dropTag(r.id); G.voice && G.voice.peerLeft(r.id); },
     onLeaveAll: () => { for (const k of [...G.scene.models.keys()]) if (k.startsWith('r')) G.scene.removeModel(k); clearTags(); }, onError: m => toast(m, 3500),
     onWelcome: m => { G.lot.dyn.clear(); G.lot.taken = new Set(m.taken || []); for (const v of m.parked || []) G.lot.dyn.set(v.id, v); G.storyC.onState(m.story); },
     onParkAdd: (v, by) => { if (by === G.net.id && G.myPark && G.myPark.startsWith('me~')) { const e = G.lot.dyn.get(G.myPark); G.lot.dyn.delete(G.myPark); G.lot.dyn.set(v.id, { ...(e || {}), ...v, mine: true }); G.myPark = v.id; } else G.lot.dyn.set(v.id, v); },
     onParkDel: (id, by) => { G.lot.dyn.delete(id); if (/^s\d+$/.test(id)) G.lot.taken.add(id); if (id === G.myPark && by !== G.net.id) { G.myPark = null; toast('Someone took your vehicle!', 2500); } },
     onEnter: onEnterReply, onStory: s => G.storyC.onState(s), onHost: () => {}, onEv: (k, d, from) => onEv(k, d, from) });
-  const url = serverUrl();
+  const url = new URLSearchParams(location.search).get('server') || (window.GAME_CONFIG && window.GAME_CONFIG.SERVER_URL) || '';
+  if (!G.voice) G.voice = new Voice(G.net, voiceState);
   G.net.disconnect();
   if (url) G.net.connect(url, { name: prof.name, veh: prof.veh, color: prof.color, room: prof.region + '-' + (prof.room || 'open') });
   else onNetStatus('offline', 'Offline mode (no server URL set)');
@@ -163,6 +162,8 @@ function initInput() {
     else if (k === 'KeyG') e.preventDefault();
     else if (k === 'KeyE') toggleFoot();
     else if (k === 'KeyT') G.storyC.openLobby();
+    else if (k === 'KeyY') teamJump();
+    else if (k === 'KeyB') toggleMic();
   });
   addEventListener('keyup', e => { G.keys[e.code] = false; if (e.code === 'Tab') $('players').hidden = true; });
   addEventListener('blur', () => { G.keys = {}; });
@@ -175,7 +176,7 @@ function initInput() {
     cvs.addEventListener('pointermove', e => { const p = look.get(e.pointerId); if (!p) return; const k = e.pointerType === 'mouse' ? 0.006 : G.foot ? 0.0055 : 0.008; G.orbit -= (e.clientX - p.x) * k; G.orbitY = clamp(G.orbitY + (e.clientY - p.y) * 0.03, -2.5, 9); p.x = e.clientX; p.y = e.clientY; G.lastDrag = performance.now(); G.freeLook = true; });
   }
   $('game').addEventListener('wheel', e => { G.zoom = clamp(G.zoom * (e.deltaY > 0 ? 1.08 : 0.92), 0.6, 1.9); }, { passive: true });
-  addEventListener('resize', () => { G.scene && G.scene.resize(); if (!$('bigmap').hidden) { fitBigMap(); drawBigMap(); } });
+  addEventListener('resize', () => G.scene && G.scene.resize());
   // minimap zoom: tap / wheel / + -
   const MINI = [250, 450, 650, 1000, 1600, 2800], mini = d => { let i = MINI.indexOf(G.miniR || 650); if (i < 0) i = 2; G.miniR = MINI[clamp(i + d, 0, MINI.length - 1)]; toast('Minimap ' + (G.miniR >= 1000 ? (G.miniR / 500).toFixed(1) + ' km' : G.miniR * 2 + ' m') + ' wide', 900); };
   $('minimap').addEventListener('click', () => { const i = MINI.indexOf(G.miniR || 650); if (i >= MINI.length - 1) G.miniR = MINI[0]; else mini(1); });
@@ -206,7 +207,7 @@ function initInput() {
     b.addEventListener('mousedown', on(true)); b.addEventListener('mouseup', on(false));
   }
   for (const b of document.querySelectorAll('#touch button')) {
-    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); if (v && k === 'act') toggleFoot(); if (v && k === 'story') G.storyC.openLobby(); if (v && k === 'mic') toggleMic(); if (v && k === 'gather') gather(); if (v && k === 'fs') toggleFs(); };
+    const k = b.dataset.k, on = v => e => { e.preventDefault(); G.touch[k] = v; if (v && k === 'horn') G.audio.horn(G.veh.type); if (v && k === 'jobs') toggleBoard(); if (v && k === 'map') toggleMap(); if (v && k === 'act') toggleFoot(); if (v && k === 'story') G.storyC.openLobby(); if (v && k === 'team') teamJump(); if (v && k === 'mic') toggleMic(); };
     b.addEventListener('touchstart', on(true), { passive: false }); b.addEventListener('touchend', on(false), { passive: false }); b.addEventListener('touchcancel', on(false), { passive: false });
   }
 }
@@ -220,28 +221,14 @@ function readInput(dt) {
 }
 
 /* ------------------------------------------------------------ HUD / UI */
-function toggleFs() { if (!toggleFullscreen()) toast('Full screen is not supported here. On iPhone: Share > Add to Home Screen', 4000); }
-async function toggleMic() { await G.voice.toggle(); syncMic(); }
-function syncMic() { const s = G.voice.status(); for (const b of [$('micBtn'), $('micDesk')]) if (b) { b.classList.toggle('live', s === 'live'); b.textContent = s === 'muted' ? '🔇' : '🎤'; } }
-function gather() {
-  const P = G.foot || G.veh, f = G.team.nearestFriend(P);
-  if (!f) { toast('No friends in this room yet - share your room code', 2800); return; }
-  if (f.d < 40) { toast('You are already with ' + f.name, 1800); return; }
-  if (!G.foot) { const sn = G.world.snapToRoad(f.x + 6, f.z, 150, 6); if (sn) { const p = G.world.roadPoint(sn.road, sn.s, 2.6, {}); G.veh.reset(p.x, p.z, p.h); G.camInit = false; G.scene.updateChunks(p.x, p.z, 60); toast('Joined ' + f.name, 2200); return; } }
-  H.stageTeam({ x: f.x + 6, z: f.z + 6 }); toast('Joined ' + f.name, 2200);
-}
 function initHud() {
-  G.voice = new Voice(G, toast); G.team = new Team(G); G.updateTag = updateTag; G.dropTag = dropTag; G.H = H;
-  for (const [id, fn] of [['fsBtn', toggleFs], ['micDesk', toggleMic], ['gatherDesk', gather]]) { const b = $(id); if (b) b.onclick = fn; }
-  addEventListener('keydown', e => { if (typing() || !G.running) return; if (e.code === 'KeyU') toggleFs(); else if (e.code === 'KeyB') toggleMic(); else if (e.code === 'KeyT') gather(); });
   $('jobCancel').onclick = cancelJob; $('boardClose').onclick = toggleBoard; $('garClose').onclick = toggleGarage; $('mapClose').onclick = toggleMap;
   $('wpClear').onclick = () => setWaypoint(null);
   $('boardRefresh').onclick = () => { G.offerSeed++; renderBoard(); };
   $('pauseResume').onclick = () => togglePause(false);
-  $('status').onclick = () => { if (G.net && G.net.status !== 'online') askServer(); }; $('status').style.pointerEvents = 'auto'; $('menuStatus').onclick = () => { if (G.net && G.net.status !== 'online') askServer(); };
-  { const c = $('speechChk'); if (c) { c.checked = Speech.on; c.onchange = () => Speech.set(c.checked); } }
-  if ($('cfgBtn')) $('cfgBtn').onclick = () => togglePause(true);
-  $('hudEditBtn').onclick = () => { closeModals(); if (!G.hudEdit) G.hudEdit = new HudEdit(G, toast); G.paused = true; G.hudEdit.start(); };
+  $('gearBtn').onclick = () => togglePause($('pause').hidden);
+  $('setMic').onclick = () => toggleMic(); $('setFs').onclick = () => toggleFs(); $('setTeam').onclick = () => { togglePause(false); teamJump(); }; $('setStory').onclick = () => { togglePause(false); G.storyC.openLobby(); };
+  $('voiceVol').oninput = e => { G.voiceVol = +e.target.value; if (G.voice) G.voice.setVolume(G.voiceVol); };
   $('pauseLeave').onclick = () => { closeModals(); G.running = false; G.net.disconnect(); clearTags(); $('hud').hidden = true; $('menu').hidden = false; G.audio.update(0, 0, 0, 'car'); persist(); };
   $('quality').value = G.scene.qName; $('quality').onchange = e => { G.scene.setQuality(e.target.value); persist(); };
   $('volume').oninput = e => G.audio.setVolume(Number(e.target.value));
@@ -253,24 +240,14 @@ function addChat(name, text) {
   const d = document.createElement('div'), b = document.createElement('b'); b.textContent = name + ': '; d.appendChild(b); d.appendChild(document.createTextNode(text));
   const log = $('chatlog'); log.appendChild(d); while (log.children.length > 7) log.removeChild(log.firstChild); setTimeout(() => d.remove(), 14000);
 }
-function serverUrl() {
-  const q = new URLSearchParams(location.search).get('server'); if (q) { try { localStorage.setItem('ar_server', q); } catch (e) { /* ignore */ } return q; }
-  let saved = ''; try { saved = localStorage.getItem('ar_server') || ''; } catch (e) { /* ignore */ }
-  return saved || (window.GAME_CONFIG && window.GAME_CONFIG.SERVER_URL) || '';
-}
-function askServer() {
-  const cur = (G.net && G.net.url) || serverUrl(), v = prompt('Game server address (your Render URL, e.g. wss://andhra-roamer-server.onrender.com).\nLeave empty to use the default.', cur); if (v === null) return;
-  try { if (v.trim()) localStorage.setItem('ar_server', v.trim()); else localStorage.removeItem('ar_server'); } catch (e) { /* ignore */ }
-  const url = serverUrl(), prof = G.profile; G.net.disconnect(); if (url) G.net.connect(url, { name: prof.name, veh: prof.veh, color: prof.color, room: prof.region + '-' + (prof.room || 'open') }); toast('Connecting to ' + url, 2500);
-}
 function onNetStatus(s, detail) {
   const el = $('status'); el.className = 'pill ' + (s === 'online' ? 'on' : 'warn');
   el.textContent = s === 'online' ? `Online · room ${detail}` : detail || s; $('menuStatus').textContent = el.textContent;
 }
 function closeModals() { for (const id of ['board', 'garage', 'bigmap', 'pause']) $(id).hidden = true; G.paused = false; }
 function togglePause(v) { closeModals(); $('pause').hidden = !v; G.paused = v; $('pauseInfo').textContent = G.net && G.net.status === 'online' ? `Room "${G.net.room}" - share the room code with friends. Ping ${Math.round(G.net.rtt)} ms.` : 'Offline.'; if (v) G.audio.update(0, 0, 0, G.veh.type); }
-function fitBigMap() { const c = $('bigcanvas'), dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.max(300, Math.round(c.clientWidth * dpr)), h = Math.max(200, Math.round(c.clientHeight * dpr)); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } }
-function toggleMap() { const open = $('bigmap').hidden; closeModals(); $('bigmap').hidden = !open; if (open) { fitBigMap(); const P = G.foot || G.veh; G.mapV = { zoom: 4, cx: P.x, cz: P.z }; drawBigMap(); } }
+function toggleMap() { const open = $('bigmap').hidden; closeModals(); $('bigmap').hidden = !open; if (open) { sizeBigMap(); drawBigMap(); } }
+function sizeBigMap() { const c = $('bigcanvas'), p = c.parentElement, r = p.getBoundingClientRect(); const hh = Math.max(200, window.innerHeight - 120), w = Math.max(240, r.width - 16), k = Math.min(1.5, window.devicePixelRatio || 1); c.style.height = hh + 'px'; c.style.width = w + 'px'; c.width = Math.round(w * k); c.height = Math.round(hh * k); G.map.fullRoads = G.map.fullRoadsG3 = null; }
 function toggleGarage() { const open = $('garage').hidden; closeModals(); $('garage').hidden = !open; }
 function toggleBoard() { const open = $('board').hidden; closeModals(); if (!open) return; $('board').hidden = false; renderBoard(); }
 function drawBigMap() { const c = $('bigcanvas'), M = G.mapV || (G.mapV = { zoom: 1, cx: null, cz: null }); G.map.draw(c.getContext('2d'), c.width, c.height, { full: true, theme: 'gta3', zoom: M.zoom, mcx: M.cx, mcz: M.cz, me: G.foot || G.veh, wp: G.wp, target: G.runner && G.runner.target, players: remotePins(), blips: allBlips(true) }); }
@@ -387,7 +364,7 @@ function exitVehicle(silent) {
   if (!silent) toast('Out of the vehicle. Use the joystick / WASD, Shift runs, E near a vehicle to get in', 3500);
 }
 function tryEnter() {
-  const f = G.foot; if (!f || f.anim || G.dead) return; const n = G.lot.nearest(f.x, f.z); if (!n) { toast('No vehicle close enough', 1500); return; }
+  const f = G.foot; if (!f || f.anim || G.dead) return; if (G.ride) { endRide(); return; } const n = G.lot.nearest(f.x, f.z); if (!n) { const rc = rideCandidate(); if (rc) { startRide(rc); return; } toast('No vehicle close enough', 1500); return; }
   const e = n.e; if (e.id.startsWith('me~') || !G.net || G.net.status !== 'online') return onEnterReply({ ok: true, id: e.id, v: e });
   G.net.sendEnter(e.id, e.static ? { type: e.type, color: e.color, x: e.x, z: e.z, h: e.h } : undefined);
 }
@@ -400,7 +377,7 @@ function finishEnter(e) {
   if (e.id === G.myPark || e.mine) { G.myPark = null; if (v.type !== e.type) v.setType(e.type); } else { if (v.type !== e.type) v.setType(e.type); v.fuel = v.spec.tank; if (G.myPark) { /* my old vehicle stays parked */ } G.myPark = null; v.reset(e.x, e.z, e.h); }
   G.vcolor = e.color; G.profile.veh = e.type; G.foot = null; G.scene.setFoot(null); G.chars.remove('me'); G.camYaw = v.h; G.orbit = 0; setFootMode(false); toast('Got in', 1200);
 }
-function toggleFoot() { if (G.paused || modalOpen() || typing() || G.dead || G.arrest || (G.story && G.story.cine) || (G.foot && G.foot.anim)) return; if (!G.foot) exitVehicle(); else tryEnter(); }
+function toggleFoot() { if (G.ride) { endRide(); return; } if (G.paused || modalOpen() || typing() || G.dead || G.arrest || (G.story && G.story.cine) || (G.foot && G.foot.anim)) return; if (!G.foot) exitVehicle(); else tryEnter(); }
 const footProxy = { x: 0, z: 0, h: 0, u: 0, vx: 0, vz: 0, speed: 0, spec: { len: 0.6, wid: 0.6 } };
 function footInput() {
   const K = G.keys, T = G.touch, j = G.joy; let ax = 0, ay = 0, mag = 0, run = false;
@@ -413,6 +390,7 @@ function footStep(dt) {
   if (f.anim) { const a = f.anim; a.t += dt / 0.55; const k = Math.min(1, a.t), e = k * k * (3 - 2 * k); f.x = a.fx + (a.tx - a.fx) * e; f.z = a.fz + (a.tz - a.fz) * e; f.y = w.heightAt(f.x, f.z);
     if (a.type === 'exit') { f.s = 0.5 + 0.5 * e; f.crouch = 1 - e; } else { f.s = 1 - 0.7 * e; f.crouch = e; } f.moving = 0.3; f.phase += dt * 6;
     if (k >= 1) { if (a.type === 'enter') { finishEnter(a.entry); return; } f.anim = null; f.s = 1; f.crouch = 0; } }
+  else if (G.ride) { rideStep(dt); }
   else if (G.arrest || G.dead || (G.story && G.story.cine)) { f.moving = 0; }
   else {
     const I = footInput(), yaw = G.camYaw + G.orbit, fx = Math.sin(yaw), fz = Math.cos(yaw), rx = -Math.cos(yaw), rz = Math.sin(yaw);
@@ -457,7 +435,7 @@ function die() {
 function respawnAt(st) {
   const ns = st || (G.law.nearestStation(G.foot ? G.foot.x : G.veh.x, G.foot ? G.foot.z : G.veh.z) || {}).st, sp = ns ? ns.door : { x: G.veh.x, z: G.veh.z };
   const fine = Math.min(G.money, 200); G.money -= fine; G.hp = 100; G.dead = null; G.arrest = null; $('wasted').hidden = true; setStars(0);
-  if (!G.foot) exitVehicle(true); G.foot.anim = null; G.foot.x = sp.x; G.foot.z = sp.z; G.foot.y = G.world.heightAt(sp.x, sp.z); G.camInit = false; issueVehicle(sp, fine ? `Hospital bill Rs ${fine}. A vehicle is waiting outside.` : 'Back on your feet - a vehicle is waiting outside.');
+  if (!G.foot) exitVehicle(true); G.foot.anim = null; G.foot.x = sp.x; G.foot.z = sp.z; G.foot.y = G.world.heightAt(sp.x, sp.z); G.camInit = false; toast(fine ? `Hospital bill Rs ${fine}` : 'Back on your feet', 2500);
 }
 function setStars(n, why) {
   const pol = G.police, P = G.foot ? footProxy : G.veh;
@@ -465,14 +443,6 @@ function setStars(n, why) {
   if (!pol.active) { pol.start(P, n); } else if (n > pol.stars) pol.raise(P, n - pol.stars); else pol.stars = n;
   H.radio(G.law.radioFor(n >= 4 ? 'swat' : n >= 2 ? 'backup' : 'crime', { x: P.x, z: P.z, stars: n }));
   G.lawT = 0;
-}
-/** after arrest / hospital: put the player straight into a vehicle on the road outside, so there is nothing to hunt for */
-function issueVehicle(spot, msg) {
-  const w = G.world, v = G.veh, sn = w.snapToRoad(spot.x, spot.z, 150, 6); let p = { x: spot.x, z: spot.z, h: G.foot ? G.foot.h : v.h };
-  if (sn) { const q = w.roadPoint(sn.road, sn.s, 0, {}); p = { x: q.x, z: q.z, h: q.h }; }
-  if (G.foot) { G.foot.anim = null; G.scene.setFoot(null); G.chars.remove('me'); }
-  v.reset(p.x, p.z, p.h); v.fuel = Math.max(v.fuel, v.spec.tank * 0.8); v.vx = v.vz = 0; G.foot = null; G.camYaw = p.h; G.orbit = 0; G.camInit = false; G.myPark = null; setFootMode(false);
-  toast(msg || 'Here is a vehicle', 4500);
 }
 function startArrest(why) {
   if (G.arrest || G.dead) return; const P = G.foot || G.veh, stars = Math.max(1, G.police.stars || 1);
@@ -483,7 +453,7 @@ function startArrest(why) {
 function arrestStep(dt) {
   const a = G.arrest; if (!a) return; a.t += dt;
   if (a.stage === 'busted' && a.t > 2.5) { a.stage = 'jail'; a.t = 0; G.money -= a.fine; const st = a.st; if (!G.foot) exitVehicle(true); if (st) { G.foot.anim = null; G.foot.x = st.door.x; G.foot.z = st.door.z; G.foot.y = G.world.heightAt(st.door.x, st.door.z); } G.camInit = false; $('wastedTxt').textContent = 'IN CUSTODY'; }
-  if (a.stage === 'jail') { $('wastedSub').textContent = `Questioned by the police... released in ${Math.max(0, Math.ceil(a.time - a.t))}s (fine Rs ${a.fine})`; if (a.t > a.time) { const st = a.st; G.arrest = null; $('wasted').hidden = true; issueVehicle(st ? st.door : { x: G.foot ? G.foot.x : G.veh.x, z: G.foot ? G.foot.z : G.veh.z }, 'Released. A vehicle is waiting outside the station - stay out of trouble.'); } }
+  if (a.stage === 'jail') { $('wastedSub').textContent = `Questioned by the police... released in ${Math.max(0, Math.ceil(a.time - a.t))}s (fine Rs ${a.fine})`; if (a.t > a.time) { G.arrest = null; $('wasted').hidden = true; toast('Released. Stay out of trouble.', 2500); } }
 }
 function policeBump(v) {
   if (!G.police.active) return;
@@ -517,7 +487,7 @@ function stepSim(dt) {
   const np = G.scene.npcPos;
   for (let i = 0; i < np.length; i++) {
     const n = np[i], dx = v.x - n.x, dz = v.z - n.z; if (dx * dx + dz * dz > 400) continue;
-    const rr = (n.type === 'bus' ? 4.6 : n.type === 'lorry' ? 4.2 : n.type === 'bike' ? 1.5 : 2.3) + v.spec.wid * 0.5 + 0.8, d = Math.hypot(dx, dz);
+    const rr = (n.type === 'bus' ? 4.6 : n.type === 'lorry' ? 4.2 : 2.3) + v.spec.wid * 0.5 + 0.8, d = Math.hypot(dx, dz);
     if (d < rr && d > 0.01) {
       const nx = dx / d, nz = dz / d, vn = v.vx * nx + v.vz * nz;
       v.x += nx * (rr - d); v.z += nz * (rr - d);
@@ -578,7 +548,7 @@ function updateRemotes() {
     const s = net.sample(r, G.tmp.rs || (G.tmp.rs = {})); if (!s) continue;
     const spec = SPECS[r.veh] || SPECS.car, hl = spec.wheelbase / 2, sn = Math.sin(s.h), cs = Math.cos(s.h);
     const fy = w.heightAt(s.x + sn * hl, s.z + cs * hl), by = w.heightAt(s.x - sn * hl, s.z - cs * hl);
-    if (s.f & FLAG.FOOT) { sc.removeModel('r' + id); r.ph = (r.ph || 0) + 0.1 * (1 + Math.abs(s.v)); const cm = G.storyC && G.storyC.cine; const rl = G.net.story && G.net.story.roles && G.net.story.roles[id], R = rl && ROLES[rl]; G.chars.set('r' + id, { x: s.x, y: w.heightAt(s.x, s.z), z: s.z, h: s.h, phase: r.ph, moving: Math.min(1.3, Math.abs(s.v) / 4.8), color: R ? R.shirt : r.color, pants: R ? R.pants : '#2c3e50', crouch: (s.f & 256) ? 0.6 : 0, gun: !!(s.f & 512), aim: !!(s.f & 512), flash: !!(s.f & FLAG.GUN), air: !!(s.f & FLAG.AIR), vis: !cm }); updateTag(id, r, s, w.heightAt(s.x, s.z) + 2.2, Math.hypot(s.x - me.x, s.z - me.z)); continue; }
+    if (s.f & FLAG.FOOT) { sc.removeModel('r' + id); r.ph = (r.ph || 0) + 0.1 * (1 + Math.abs(s.v)); const cm = G.storyC && G.storyC.cine; const rl = G.net.story && G.net.story.roles && G.net.story.roles[id], R = rl && ROLES[rl]; G.chars.set('r' + id, { x: s.x, y: w.heightAt(s.x, s.z), z: s.z, h: s.h, phase: r.ph, moving: Math.min(1.3, Math.abs(s.v) / 4.8), color: R ? R.shirt : r.color, pants: R ? R.pants : '#2c3e50', crouch: (s.f & 256) ? 0.6 : 0, gun: !!(s.f & 512), aim: !!(s.f & 512), flash: !!(s.f & FLAG.GUN), air: !!(s.f & FLAG.AIR), vis: !cm && !(s.f & FLAG.PASS) }); updateTag(id, r, s, w.heightAt(s.x, s.z) + 2.2, Math.hypot(s.x - me.x, s.z - me.z)); continue; }
     G.chars.remove('r' + id);
     const m = sc.model('r' + id, r.veh, r.color);
     sc.placeModel(m, { x: s.x, z: s.z, y: (fy + by) / 2, h: s.h, pitch: Math.atan((fy - by) / spec.wheelbase), roll: 0, steer: s.st * spec.maxSteer, brake: s.f & FLAG.BRAKE, lights: s.f & FLAG.LIGHTS, reverse: s.f & FLAG.REVERSE, signed: s.v });
@@ -594,7 +564,7 @@ function updateTag(id, r, s, y, d) {
   const p = G.scene.toScreen(s.x, y, s.z, G.tmp.sp || (G.tmp.sp = {}));
   if (!p.visible) { el.style.display = 'none'; return; }
   const chat = performance.now() - r.chatAt < 6000 ? r.chat : '';
-  if (el._name !== r.name + '|' + chat) { el._name = r.name + '|' + chat; el.innerHTML = (chat ? `<small>${esc(chat)}</small>` : '') + esc(r.name); }
+  const sp = G.voice && typeof id === 'number' && G.voice.speaking(id) ? '🔊 ' : ''; if (el._name !== sp + r.name + '|' + chat) { el._name = sp + r.name + '|' + chat; el.innerHTML = (chat ? `<small>${esc(chat)}</small>` : '') + sp + esc(r.name); }
   el.style.display = 'block'; el.style.left = p.x + 'px'; el.style.top = p.y + 'px'; el.style.opacity = String(clamp(1.5 - d / 250, 0.35, 1));
 }
 function dropTag(id) { const el = G.tags.get(id); if (el) el.remove(); G.tags.delete(id); }
@@ -610,7 +580,7 @@ function updateHud(dt, info, serverSec) {
   $('clock').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}  ·  ${v.surf === SURF.ROAD || v.surf === SURF.STREET ? 'road' : v.surf === SURF.WATER ? 'water!' : 'off-road'}`;
   const { city, dist } = nearestCityInfo(), nr = G.world.nearestRoad(v.x, v.z), onRoad = nr && nr.d < nr.halfW + 3 ? nr.road.ref : '';
   $('where').textContent = dist < city.R ? `${city.name}${city.te ? ' · ' + city.te : ''}` : `${(dist * 0.001).toFixed(1)} km from ${city.name}${onRoad ? ' · ' + onRoad : ''}`;
-  { const wp = G.wp, box = $('wpBox'); box.hidden = !wp; if (wp) { const d = Math.hypot(wp.x - v.x, wp.z - v.z); if (d < 25) { setWaypoint(null); toast('You have arrived!', 2500); } else { $('wpDist').textContent = d > 1000 ? `${(d * 0.001).toFixed(1)} km` : `${Math.round(d)} m`; $('wpArrow').style.transform = `rotate(${-(Math.atan2(wp.x - v.x, wp.z - v.z) - v.h) * 57.2958}deg)`; } }
+  { const wp = G.wp, box = $('wpBox'); box.hidden = !wp; if (wp) { const P2 = G.foot || v, hd = G.foot ? G.camYaw + G.orbit : v.h, d = Math.hypot(wp.x - P2.x, wp.z - P2.z); if (d < 25 && !G.wpStory) { setWaypoint(null); toast('You have arrived!', 2500); } else { $('wpDist').textContent = (wp.label ? wp.label + ' · ' : '') + (d > 1000 ? `${(d * 0.001).toFixed(1)} km` : `${Math.round(d)} m`); $('wpArrow').style.transform = `rotate(${-(Math.atan2(wp.x - P2.x, wp.z - P2.z) - hd) * 57.2958}deg)`; } }
     const pol = G.police.active; $('wanted').hidden = !pol; if (pol) { const c = G.police.car, st = G.police.stars; $('stars').innerHTML = '★'.repeat(st) + '<span class="off">' + '★'.repeat(5 - st) + '</span>'; $('stars').classList.toggle('flash', G.police.close > 0.3); $('wantedTxt').textContent = c ? `${G.police.units.length} unit(s) · ${G.police.lv.name} · ${Math.round(Math.hypot(c.x - v.x, c.z - v.z))} m` : ''; } }
   const r = G.runner; $('jobPanel').hidden = !r; $('arrowBox').hidden = !r;
   if (r) {
@@ -624,7 +594,7 @@ function updateHud(dt, info, serverSec) {
   else if (v.fuel <= 0.2) { pr.hidden = false; pr.textContent = 'Out of fuel! Press R to reset to road'; }
   else pr.hidden = true;
   $('hpBar').style.width = G.hp + '%'; $('hpTxt').textContent = Math.round(G.hp); $('arBar').style.width = '0%'; $('weapon').textContent = G.foot ? 'PISTOL' : 'ROOF GUN';
-  { const ep = $('enterPrompt'), eb = $('enterBtn'); let n = null; if (G.foot && !G.foot.anim && !G.dead) n = G.lot.nearest(G.foot.x, G.foot.z); ep.hidden = !n; if (n) ep.textContent = `${G.touch.enabled ? 'Tap ENTER' : 'Press E'} to get into the ${SPECS[n.e.type].label}`; eb.hidden = !n || !G.touch.enabled; }
+  { const ep = $('enterPrompt'), eb = $('enterBtn'); let n = null, rc = null; if (G.foot && !G.foot.anim && !G.dead && !G.ride) { n = G.lot.nearest(G.foot.x, G.foot.z); if (!n) rc = rideCandidate(); } ep.hidden = !n && !rc && !G.ride; if (n) ep.textContent = `${G.touch.enabled ? 'Tap ENTER' : 'Press E'} to get into the ${SPECS[n.e.type].label}`; else if (rc) ep.textContent = `${G.touch.enabled ? 'Tap ENTER' : 'Press E'} to ride with ${rc.r.name}`; else if (G.ride) ep.textContent = 'Riding - press E to get off'; eb.hidden = !(n || rc || G.ride) || !G.touch.enabled; }
   if (G.storyC) { G.storyC.hud(); const L = G.law.lastRadio; if (L && G.lastRadioT !== L.t) { G.lastRadioT = L.t; showRadio(L.text); } }
   if (!$('players').hidden) renderPlayers();
 }
@@ -652,7 +622,7 @@ function frame(now) {
   { const ab = $('actBtn'), fb = document.querySelector('.fire'), foot = !!G.foot; if (G.lastFoot !== foot) setFootMode(foot); if (ab && G.lastFoot !== foot) { G.lastFoot = foot; ab.innerHTML = foot ? '🚗<br>ENTER' : '🚪<br>EXIT'; if (fb) fb.innerHTML = foot ? '⬆<br>JUMP' : '🔫<br>FIRE'; } }
   updateRemotes(); updateCamera(dt, pose); G.scene.render();
   const flags = (v.brakeLit ? FLAG.BRAKE : 0) | (lightsOn ? FLAG.LIGHTS : 0) | (G.keys.KeyH ? FLAG.HORN : 0) | (v.reversing ? FLAG.REVERSE : 0);
-  if (G.net) { if (G.foot) { const f = G.foot; G.net.sendState({ x: f.x, z: f.z, h: f.h, u: f.speed || 0, steerAngle: 0, spec: { maxSteer: 1 }, teleported: false }, FLAG.FOOT | (f.speed > 4.5 ? FLAG.RUN : 0) | (f.lift > 0.15 ? FLAG.AIR : 0) | (G.shotFlash > 0 ? FLAG.GUN : 0) | (f.anim ? 256 : 0) | (f.shotT > 0 ? 512 : 0)); } else G.net.sendState(v, flags); }
+  if (G.net) { if (G.foot) { const f = G.foot; G.net.sendState({ x: f.x, z: f.z, h: f.h, u: f.speed || 0, steerAngle: 0, spec: { maxSteer: 1 }, teleported: false }, FLAG.FOOT | (f.speed > 4.5 ? FLAG.RUN : 0) | (f.lift > 0.15 ? FLAG.AIR : 0) | (G.shotFlash > 0 ? FLAG.GUN : 0) | (f.anim ? 256 : 0) | (f.shotT > 0 ? 512 : 0) | (G.ride ? FLAG.PASS : 0)); } else G.net.sendState(v, flags); }
   G.audio.update(v.rpm, G.paused ? 0 : Math.max(0, G.keys.KeyW || G.keys.ArrowUp || G.touch.gas ? 1 : 0), v.skid * (v.speed > 3 ? 1 : 0), v.type);
   if ((G.hudT += dt) > 0.066) { G.hudT = 0; updateHud(dt, info, serverSec); }
   if ((G.minimapT += dt) > 0.1) { G.minimapT = 0; const c = $('minimap'); const me2 = G.foot || v; G.map.draw(c.getContext('2d'), c.width, c.height, { full: false, theme: 'gta3', rotateH: G.foot ? G.camYaw + G.orbit : v.h, cx: me2.x, cz: me2.z, radius: G.miniR || 650, me: me2, target: G.runner && G.runner.target, wp: G.wp, players: remotePins(), blips: allBlips() }); if (!$('bigmap').hidden) drawBigMap(); }
@@ -669,7 +639,7 @@ function showRadio(text) { const r = $('radio'); $('radioTxt').textContent = tex
 const H = {
   toast: (m, ms) => toast(m, ms),
   radio: text => { if (text) { G.law.radio(text); } },
-  call: (who, text) => { Speech.queue(text, who); const N = NPCS[who] || ROLES[who] || { name: who, emoji: '📞' }; $('callBox').hidden = false; $('callAva').textContent = N.emoji || '📞'; $('callWho').textContent = N.name || who; $('callTxt').textContent = text; clearTimeout(callTimer); callTimer = setTimeout(() => { $('callBox').hidden = true; }, 7000); },
+  call: (who, text) => { const N = NPCS[who] || ROLES[who] || { name: who, emoji: '📞' }; $('callBox').hidden = false; $('callAva').textContent = N.emoji || '📞'; $('callWho').textContent = N.name || who; $('callTxt').textContent = text; clearTimeout(callTimer); callTimer = setTimeout(() => { $('callBox').hidden = true; }, 7000); },
   startStory: async () => { if (!G.running) { await startGame(); } G.storyC.openLobby(); },
   stageTeam: A => {   // regroup everyone around the cutscene location
     const roles = G.net && G.net.story ? G.net.story.roles : {}, myRole = G.storyC.myRole, i = Math.max(0, ['mastermind', 'driver', 'hacker', 'insider'].indexOf(myRole));
@@ -685,7 +655,7 @@ function allBlips(full) {
   const out = []; for (const st of G.law.stations) out.push({ x: st.x, z: st.z, color: '#3b6fe0', r: 5, glyph: 'P', gcolor: '#fff', label: full ? st.name : '' });
   for (const s of G.world.stations || []) if (full) out.push({ x: s.x, z: s.z, color: '#d63031', r: 3 });
   if (G.storyC) out.push(...G.storyC.blips());
-  if (G.team) out.push(...G.team.blips());
+  if (G.aiList) out.push(...G.aiList);
   if (G.police.active) for (const P of G.police.cars) if (P.hp > 0 && !P.block) out.push({ x: P.car.x, z: P.car.z, color: (performance.now() / 300 | 0) % 2 ? '#e74c3c' : '#3b6fe0', r: 3.5 });
   for (const o of G.law.officers) if (o.state === 'chase' && o.hp > 0) out.push({ x: o.x, z: o.z, color: '#6aa0ff', r: 3 });
   return out;
@@ -704,8 +674,7 @@ function stationMesh(st) {
 }
 function renderWorldExtras(dt, pose) {
   const sc = G.scene, C = G.chars, S = G.storyC, cine = S && S.cine, w = G.world; const fx = G.foot ? G.foot.x : pose.x, fz = G.foot ? G.foot.z : pose.z, t = performance.now() / 1000;
-  S.update(dt);
-  G.lightsOn = G.lights !== 'off'; G.team.update(dt, t, G.foot ? { x: G.foot.x, z: G.foot.z, h: G.foot.h } : pose, !!G.foot);
+  S.update(dt); updateAI(dt);
   G.lot.render(sc, fx, fz);
   // stations
   for (const st of G.law.stations) { const near = Math.hypot(st.x - fx, st.z - fz) < 450, o = stMeshes.get(st.id); if (near && !o) stMeshes.set(st.id, stationMesh(st)); else if (!near && o) { sc.scene.remove(o.g); stMeshes.delete(st.id); } else if (o) { const on = (t * 3 | 0) % 2; o.l1.visible = !!on; o.l2.visible = !on; } }
@@ -724,6 +693,55 @@ function renderWorldExtras(dt, pose) {
   if (cine && S.cine.shotActors) { const sh = S.cine.shotActors, A = S.cine.A; (sh.actors || []).forEach(a => { const R = ROLES[a.id] || NPCS[a.id]; if (!R) return; const x = A.x + a.at[0], z = A.z + a.at[1]; C.set('cs_' + a.id, { x, y: w.heightAt(x, z), z, h: Math.atan2(-a.at[0] + (Math.random() * 0), -a.at[1]) + 0, color: R.shirt, pants: R.pants, hat: R.hat, s: R.s || 1, phase: t * 2, moving: 0 }); }); (sh.props || []).forEach((p, i) => { const m = sc.model('csp' + i, 'car', p.color); sc.placeModel(m, { x: A.x + p.at[0], z: A.z + p.at[1], y: w.heightAt(A.x + p.at[0], A.z + p.at[1]), h: p.h, pitch: 0, roll: 0, steer: 0, lights: !!p.bar }); }); }
   C.sweep('cs_'); if (!cine) for (const k of [...sc.models.keys()]) if (k.startsWith('csp')) sc.removeModel(k);
   C.tick(dt);
+}
+
+/* ------------------------------------------------ fullscreen, mic, team, passenger, AI teammates */
+function toggleFs() { const d = document, el = d.documentElement; if (!d.fullscreenElement && !d.webkitFullscreenElement) { const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' }); Promise.resolve(p).then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (e) { /* ignore */ } }).catch(() => toast('Full screen is not allowed here. Use browser menu > Add to Home screen.', 3500)); } else (d.exitFullscreen || d.webkitExitFullscreen).call(d); }
+$('fsBtn').onclick = toggleFs; if (!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen)) $('fsBtn').style.display = 'none';
+document.addEventListener('fullscreenchange', () => { $('fsBtn').innerHTML = document.fullscreenElement ? '&#x2715;' : '&#x26F6;'; G.scene && G.scene.resize(); });
+function voiceState(s) { const b = $('micBtn'); const n = G.voice ? G.voice.count() : 0; b.textContent = s === 'on' ? '🎤' + (n ? ' ' + n : ' ON') : s === 'muted' ? '🔇' : '🎤'; b.style.background = s === 'on' ? 'rgba(46,204,113,.5)' : s === 'muted' ? 'rgba(231,76,60,.5)' : ''; if (s === 'denied') toast('Microphone permission denied', 3000); if (s === 'nosupport') toast('Voice chat is not supported in this browser', 3000); if (s === 'on') toast('Voice chat on. Friends who tap the mic can hear you. Tap again to mute.', 3500); }
+document.addEventListener('pointerdown', () => G.voice && G.voice.resume());
+function toggleMic() { if (!G.net || G.net.status !== 'online') { toast('Voice chat needs the online server (same room code as your friends)', 3000); return; } G.voice.toggle(); }
+function teamJump() {
+  if (!G.net || G.net.status !== 'online' || !G.net.remotes.size) { toast('No friends in this room yet. Share your room code.', 2500); return; }
+  const P = G.foot || G.veh; let best = null, bd = 1e18;
+  for (const r of G.net.remotes.values()) { const s = G.net.sample(r, {}); if (!s) continue; const d = (s.x - P.x) ** 2 + (s.z - P.z) ** 2; if (d < bd) { bd = d; best = { r, s }; } }
+  if (!best) return; const s = best.s;
+  if (G.foot && !G.foot.anim) { G.foot.x = s.x + 2; G.foot.z = s.z + 1; G.foot.y = G.world.heightAt(G.foot.x, G.foot.z); }
+  else if (!G.foot) { G.veh.reset(s.x - Math.sin(s.h) * 9, s.z - Math.cos(s.h) * 9, s.h); G.camYaw = s.h; }
+  G.camInit = false; toast('Joined ' + best.r.name, 1800);
+}
+function rideCandidate() {
+  if (!G.foot || G.foot.anim || G.ride || !G.net || G.net.status !== 'online') return null;
+  for (const [id, r] of G.net.remotes) { const s = r.snaps[r.snaps.length - 1]; if (!s || (s.f & FLAG.FOOT)) continue; const sp = SPECS[r.veh] || SPECS.car; if (distToVehicle(G.foot.x, G.foot.z, s.x, s.z, s.h, sp) < 4.5) return { id, r }; }
+  return null;
+}
+function startRide(c) { G.ride = { id: c.id }; G.foot.moving = 0; toast('Riding with ' + c.r.name + '. Press E / EXIT to get off', 2500); }
+function rideStep(dt) {
+  const f = G.foot, r = G.net && G.net.remotes.get(G.ride.id), s = r && G.net.sample(r, G.tmp.ride || (G.tmp.ride = {}));
+  if (!s || (r.snaps[r.snaps.length - 1].f & FLAG.FOOT)) { endRide(); return; }
+  f.x = s.x; f.z = s.z; f.y = G.world.heightAt(s.x, s.z) + 0.8; f.h = s.h; f.moving = 0; f.speed = 0; G.camYaw = lerpAngle(G.camYaw, s.h, 1 - Math.exp(-3 * dt));
+}
+function endRide() { if (!G.ride) return; const f = G.foot; f.x += Math.cos(f.h) * 2.6; f.z -= Math.sin(f.h) * 2.6; f.y = G.world.heightAt(f.x, f.z); G.ride = null; toast('Got off', 1200); }
+const AI_ORDER = ['mastermind', 'driver', 'hacker', 'insider'];
+function updateAI(dt) {
+  const S = G.storyC, st = S.state, out = [];
+  if (!st || !st.on || (S.cine)) { G.aiList = out; G.chars.sweep('ai_'); return; }
+  const held = new Set(Object.values(st.roles || {})), P = G.foot || G.veh, w = G.world; G.ai = G.ai || {};
+  AI_ORDER.forEach((role, i) => {
+    if (held.has(role)) { delete G.ai[role]; return; }
+    let a = G.ai[role]; const slot = (i + 1) * 1.7, tx = P.x + Math.cos(slot) * 3.2, tz = P.z + Math.sin(slot) * 3.2;
+    if (!a) a = G.ai[role] = { x: tx, z: tz, h: 0, phase: 0, moving: 0, riding: false };
+    if (!G.foot) { a.riding = true; a.x = P.x; a.z = P.z; return; }      // they ride in your vehicle
+    if (a.riding) { a.riding = false; a.x = tx; a.z = tz; }
+    const dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz); if (d > 45) { a.x = tx; a.z = tz; }
+    let spd = d > 2 ? Math.min(7, 1.5 + d * 0.9) : 0; if (spd > 0) { const aim = Math.atan2(dx, dz); for (const off of [0, 0.7, -0.7, 1.4, -1.4]) { const q = aim + off, nx = a.x + Math.sin(q) * (spd * dt + 0.4), nz = a.z + Math.cos(q) * (spd * dt + 0.4); if (!G.law._blocked(nx, nz)) { a.x += Math.sin(q) * spd * dt; a.z += Math.cos(q) * spd * dt; a.h += Math.atan2(Math.sin(q - a.h), Math.cos(q - a.h)) * Math.min(1, dt * 9); break; } } } else a.h += Math.atan2(Math.sin(Math.atan2(P.x - a.x, P.z - a.z) - a.h), Math.cos(Math.atan2(P.x - a.x, P.z - a.z) - a.h)) * Math.min(1, dt * 4);
+    a.moving += ((spd > 0 ? Math.min(1.3, spd / 4.8) : 0) - a.moving) * Math.min(1, dt * 8); a.phase += dt * (spd > 4 ? 12 : 8) * (spd > 0 ? 1 : 0);
+    const R = ROLES[role]; G.chars.set('ai_' + role, { x: a.x, y: w.heightAt(a.x, a.z), z: a.z, h: a.h, phase: a.phase, moving: a.moving, color: R.shirt, pants: R.pants }); out.push({ x: a.x, z: a.z, color: R.color, r: 3.5 });
+    updateTag('ai_' + role, { name: R.emoji + ' ' + R.short + ' (AI)', chat: '', chatAt: 0 }, a, w.heightAt(a.x, a.z) + 2.2, Math.hypot(a.x - P.x, a.z - P.z));
+  });
+  G.aiList = out; G.chars.sweep('ai_');
+  for (const role of AI_ORDER) if (held.has(role) || !G.ai[role] || G.ai[role].riding) dropTag('ai_' + role);
 }
 
 boot();

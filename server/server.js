@@ -225,7 +225,7 @@ function handle(p, raw) {
       p.tp = false; p.hasState = true; p.lastState = now;
       p.x = x; p.z = z;
       p.h = num(m.h, -100, 100); p.v = num(m.v, -150, 150);
-      p.st = num(m.st, -1, 1); p.f = num(m.f, 0, 1023) | 0;
+      p.st = num(m.st, -1, 1); p.f = num(m.f, 0, 2047) | 0;
       room.dirty = true;
       break;
     }
@@ -333,7 +333,7 @@ server.on('upgrade', (req, socket) => {
   const upgrade = String(req.headers.upgrade || '').toLowerCase();
   if (!key || upgrade !== 'websocket') { socket.destroy(); return; }
   const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.length && origin && !ALLOWED_ORIGINS.includes('*') && !ALLOWED_ORIGINS.includes(origin) && !/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.vercel\.app$/i.test(origin) && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
+  if (ALLOWED_ORIGINS.length && origin && !ALLOWED_ORIGINS.includes(origin)) {
     socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;

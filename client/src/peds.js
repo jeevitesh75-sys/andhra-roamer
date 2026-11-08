@@ -20,7 +20,7 @@ export class Crowd {
     const near = this.w.nearestCity(snap.x, snap.z).dist < 4500, r = this.rnd();
     const kind = r < (near ? 0.78 : 0.4) ? 'human' : r < (near ? 0.9 : 0.72) ? 'cow' : r < (near ? 0.96 : 0.86) ? 'dog' : 'goat';
     const road = snap.road, onRoad = kind === 'cow' ? this.rnd() < 0.45 : kind === 'dog' ? this.rnd() < 0.2 : false;
-    const side = this.rnd() < 0.5 ? -1 : 1, off = onRoad ? (this.rnd() - 0.5) * road.halfW * 1.3 : side * (road.halfW + 1.0 + this.rnd() * 1.2);
+    const side = this.rnd() < 0.5 ? -1 : 1, off = onRoad ? (this.rnd() - 0.5) * road.halfW * 1.3 : side * (road.halfW + 1.5 + this.rnd() * 1.4);
     const p = this.w.roadPoint(road, snap.s, off, {}); if (Math.hypot(p.x - veh.x, p.z - veh.z) < 14 || this._insideBuilding(p.x, p.z)) return false;
     const e = { kind, x: p.x, z: p.z, h: p.h, road, s: snap.s, off, dir: this.rnd() < 0.5 ? -1 : 1, state: 'walk', t: 0, phase: this.rnd() * 6, lift: 0, lie: 0, vy: 0, hx: 0, hz: 0, sc: 0.92 + this.rnd() * 0.18, idle: this.rnd() * 4 };
     if (kind === 'human') { e.c1 = this._pick(SHIRTS); e.c2 = this._pick(PANTS); e.skin = this._pick(SKIN); e.speed = 1.0 + this.rnd() * 0.7; }
@@ -55,7 +55,8 @@ export class Crowd {
         if (this.rnd() < dt * (e.kind === 'cow' ? 0.25 : 0.04)) e.idle = (e.kind === 'cow' ? 5 : 1.5) + this.rnd() * 5;
         e.s += e.dir * e.speed * dt; if (e.s < 0 || e.s > e.road.len) { e.dir = -e.dir; e.s = clamp(e.s, 0, e.road.len); }
       }
-      if (dodge) e.off += dodge * 3.6 * dt * Math.sign(e.off || 1) * (Math.abs(e.off) < e.road.halfW + 3 ? 1 : 0);
+      if (dodge && e.kind !== 'human') e.off += dodge * 3.6 * dt * Math.sign(e.off || 1) * (Math.abs(e.off) < e.road.halfW + 3 ? 1 : 0);
+      if (e.kind === 'human') { const mn = e.road.halfW + 1.3, sg = Math.sign(e.off) || (e.side0 = e.side0 || 1); if (Math.abs(e.off) < mn) e.off = sg * Math.min(mn, Math.abs(e.off) + 6 * dt + 0.3); }   // people always stay on the footpath
       const p = w.roadPoint(e.road, e.s, e.off, this.tmp); e.x = p.x; e.z = p.z; e.h = p.h + (e.dir > 0 ? 0 : Math.PI);
     }
     for (let k = 0; k < 2 && this.list.length < want + 8 && alive < want && spawned < 2; k++) if (this._spawn(veh)) { spawned++; alive++; }

@@ -1,6 +1,5 @@
-// Game server. Leave as is unless your Render service has a different name.
-// You can also change it inside the game: tap the status pill at the top ("Playing offline...") and paste your wss:// URL -
-// it is remembered on this device, so updating the game files never resets it.
+// Edit SERVER_URL after you deploy the server on Render, e.g. 'wss://andhra-roamer-server.onrender.com'
+// (You can also test with ?server=wss://... in the page URL.)
 window.GAME_CONFIG = {
-  SERVER_URL: 'wss://andhra-roamer.onrender.com',
+  SERVER_URL: 'ws://localhost:8080',
 };

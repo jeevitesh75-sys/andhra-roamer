@@ -158,30 +158,22 @@ label.inl{display:flex;align-items:center;gap:8px;margin:0;text-transform:none}l
 .roleCard .who{margin-top:8px;font-weight:700;color:#7dffb0}.roleCard.taken .who{color:#ffd166}.roleCard.mine{border-color:#f6c744;box-shadow:0 0 0 1px #f6c744 inset}.roleCard .em{font-size:30px}
 @media (max-height:520px){#cineSub{bottom:calc(13vh + 4px)}#cineText{font-size:14px}}
 
-/* =====================================================================
-   v3c: no overlapping boxes, full-screen map, teammate arrows, voice/fullscreen buttons
-   ===================================================================== */
-.is-touch #objective{top:46px!important;left:50%!important;transform:translateX(-50%)!important;width:min(300px,38vw)!important}
-.is-touch #callBox{top:118px}
-.is-touch #radio{top:auto;bottom:6px;left:50%}
-.is-touch #wpBox{top:8px;left:30%}
-#objective{max-width:calc(100vw - 24px)}
-@media (max-height:520px){#objective{padding:4px 8px}#objChap{font-size:9px}#objTitle{font-size:12px}#objText{font-size:11px}}
-#bigmap .card.wide{width:100vw;max-width:none;height:100vh;height:100dvh;max-height:none;border-radius:0;padding:8px 10px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box}
-#bigmap h2{margin:0;font-size:15px}
-#bigmap canvas#bigcanvas{flex:1 1 auto;min-height:0;width:100%;height:100%;border-radius:10px;background:#0b1626;display:block}
-#bigmap .rowEnd{flex:0 0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-#mates{position:fixed;inset:0;pointer-events:none;z-index:5}
-.mate{position:absolute;transform:translate(-50%,-50%);background:rgba(8,14,26,.84);border:2px solid #7dffb0;border-radius:12px;padding:2px 9px;font:700 11px system-ui;color:#fff;text-align:center;white-space:nowrap;display:none}
-.mate span{display:block;font-weight:500;color:#cfd8e4;font-size:10px}
-#sysBar{position:fixed;right:14px;top:132px;display:flex;flex-direction:column;gap:8px;z-index:7}
-#sysBar button{width:44px;height:44px;border-radius:50%;font-size:18px;padding:0;background:rgba(10,16,26,.75);border:1px solid rgba(255,255,255,.4);color:#fff;cursor:pointer}
-#sysBar button.live,.tm button.live{background:#1e8f4e!important;box-shadow:0 0 0 3px rgba(61,220,132,.5)}
-.is-touch #sysBar{display:none}
-#fsMenu{margin-bottom:8px}
+/* v3b fixes: full screen button, bigger map, objective placement, markers */
+#fsBtn{position:fixed;top:8px;right:8px;z-index:60;width:40px;height:36px;padding:0;font-size:20px;background:rgba(13,27,42,.75)}
+#moneyBox{right:58px!important}#wanted{right:58px!important}
+.is-touch #moneyBox{right:56px!important}.is-touch #wanted{right:56px!important}
+.is-touch #touch .tm{right:8px;top:50px}
+#objMark{position:fixed;z-index:6;pointer-events:none;transform:translate(-50%,-100%);text-align:center;font:800 12px system-ui;color:#ffd24a;text-shadow:0 1px 3px #000,0 0 6px #000;white-space:nowrap}
+#objMark i{display:block;font-style:normal;font-size:22px;line-height:1;animation:bob .8s infinite alternate}@keyframes bob{to{transform:translateY(5px)}}
+body.is-touch #objective{top:42px;left:50%;transform:translateX(-50%);width:min(340px,46vw);padding:5px 9px}
+body.is-touch #objText{font-size:11px}body.is-touch #objTitle{font-size:12px;margin:0}body.is-touch #objTeam{display:none}
+body.is-touch #callBox{top:auto;bottom:96px;left:50%;max-width:min(420px,50vw)}
+body.is-touch #wpBox{top:6px;left:50%;max-width:42vw}
+#bigmap{padding:4px}#bigmap .card.wide{height:100%;display:flex;flex-direction:column;padding:8px;border-radius:12px}#bigmap h2{margin:0 0 4px;font-size:13px}
+#bigmap canvas#bigcanvas{flex:1 1 auto;min-height:0;max-width:none;max-height:none;margin:0}
+#bigmap .rowEnd{margin-top:6px;flex-wrap:wrap}#bigmap .legend{font-size:11px}
+@media (max-height:520px){#bigmap h2 small{display:none}}
 
-#hudEdit{position:fixed;top:8px;left:50%;translate:-50% 0;z-index:70;display:flex;gap:8px;align-items:center;background:rgba(10,16,26,.96);border:1px solid #ffd24a;border-radius:12px;padding:8px 12px;color:#fff;font-size:13px;max-width:96vw}
-#hudEdit input[type=range]{width:120px}#hudEdit button{padding:8px 12px;border-radius:10px;font-weight:700}
-.hud-edit [data-hid]{outline:2px dashed rgba(255,210,74,.95);outline-offset:3px;touch-action:none!important;pointer-events:auto!important;cursor:move}
-.hud-edit [data-hid].hsel{outline:3px solid #3ddc84}
-#cineVoice{margin-right:8px}
+#gearBtn{position:fixed;top:8px;right:54px;z-index:60;width:40px;height:36px;padding:0;font-size:20px;background:rgba(13,27,42,.75)}
+#pause .row2{margin-top:6px}#pause .card{max-height:92vh;overflow:auto}
+#objSkip{margin-top:6px;width:100%;padding:6px;font-size:12px;background:#c0392b}

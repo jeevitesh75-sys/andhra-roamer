@@ -3,12 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0d1b2a">
 <title>Andhra Roamer - Drive Andhra Pradesh</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <canvas id="game"></canvas>
+<button id="fsBtn" title="Full screen">&#x26F6;</button><button id="gearBtn" title="Settings">&#x2699;</button>
+<div id="objMark" hidden></div>
 
 <div id="loading"><div class="ld-title">ANDHRA ROAMER</div><div id="ldText">Loading engine...</div><div class="bar"><i id="ldBar"></i></div><div id="ldErr"></div></div>
 
@@ -28,11 +31,10 @@
       <label>Start in<select id="startCity"></select></label>
       <label>Room code<input id="room" maxlength="12" placeholder="public" autocomplete="off"></label>
     </div>
-    <button id="fsMenu" type="button">⛶ Full screen</button>
     <button id="startBtn" class="big">DRIVE (FREE ROAM)</button>
     <button id="storyBtn" class="big story">ANDHRA UNDERWORLD &ndash; THE FOUR<small>4-player crime story &middot; play online with friends</small></button>
     <div id="menuStatus" class="note"></div>
-    <div class="keys"><b>W A S D</b> drive (<b>S</b> = brake, then reverse) &nbsp; <b>Space</b> handbrake &nbsp; <b>H</b> horn &nbsp; <b>L</b> lights &nbsp; <b>C</b> camera &nbsp; <b>J</b> jobs &nbsp; <b>M</b> map &nbsp; <b>F</b> refuel &nbsp; <b>R</b> reset &nbsp; <b>V</b> vehicle &nbsp; <b>Enter</b> chat &nbsp; <b>Tab</b> players &nbsp; <b>E</b> get out / in &nbsp; <b>Shift</b> run &nbsp; <b>G</b> shoot &nbsp; <b>T</b> story</div>
+    <div class="keys"><b>W A S D</b> drive (<b>S</b> = brake, then reverse) &nbsp; <b>Space</b> handbrake &nbsp; <b>H</b> horn &nbsp; <b>L</b> lights &nbsp; <b>C</b> camera &nbsp; <b>J</b> jobs &nbsp; <b>M</b> map &nbsp; <b>F</b> refuel &nbsp; <b>R</b> reset &nbsp; <b>V</b> vehicle &nbsp; <b>Enter</b> chat &nbsp; <b>Tab</b> players &nbsp; <b>E</b> get out / in &nbsp; <b>Shift</b> run &nbsp; <b>G</b> shoot &nbsp; <b>T</b> story &nbsp; <b>Y</b> join team &nbsp; <b>B</b> mic</div>
   </div>
 </div>
 
@@ -59,13 +61,11 @@
   <div id="players" hidden></div>
   <div id="flash"></div>
   <div id="help">H horn · L lights · C camera · J jobs · M map · V vehicle · Esc menu</div>
-  <div id="mates"></div>
-  <div id="sysBar"><button id="cfgBtn" title="Menu / settings">⚙</button><button id="fsBtn" title="Full screen [U]">⛶</button><button id="micDesk" title="Voice chat [B]">🎤</button><button id="gatherDesk" title="Go to a friend [T]">👥</button></div>
   <div id="touch" hidden>
     <div class="tl"><button data-k="left">◀</button><button data-k="right">▶</button></div>
     <div class="tr"><button data-k="rev" class="rev">REV</button><button data-k="gas" class="gas">GAS</button><button data-k="brake">BRAKE</button></div>
     <div class="ta"><button data-k="fire" class="fire">🔫<br>FIRE</button><button data-k="act" class="act" id="actBtn">🚪<br>EXIT</button></div>
-    <div class="tm"><button data-k="horn">📢</button><button data-k="jobs">JOBS</button><button data-k="map">MAP</button><button data-k="story" id="storyTouch">STORY</button><button data-k="mic" id="micBtn">🎤</button><button data-k="gather">👥</button><button data-k="fs">⛶</button><button data-k="fuel" id="fuelBtn" style="display:none">⛽ FUEL</button></div>
+    <div class="tm"><button data-k="horn">📢</button><button data-k="jobs">JOBS</button><button data-k="map">MAP</button><button data-k="story" id="storyTouch">STORY</button><button data-k="team" id="teamBtn">TEAM</button><button data-k="mic" id="micBtn">🎤</button><button data-k="fuel" id="fuelBtn" style="display:none">⛽ FUEL</button></div>
   </div>
   <div id="joyZone" hidden></div><div id="joyBase" hidden><div id="joyKnob"></div></div>
   <div id="footBtns" hidden>
@@ -81,7 +81,7 @@
   <div class="bar top"></div><div class="bar bottom"></div>
   <div id="cineTitle"></div>
   <div id="cineSub"><div id="cineWho"></div><div id="cineText"></div></div>
-  <div id="cineFoot"><span id="cineReady"></span><button id="cineVoice">🔊 Voice ON</button><button id="cineSkip">SKIP &#9654;</button></div>
+  <div id="cineFoot"><span id="cineReady"></span><button id="cineSkip">SKIP &#9654;</button></div>
 </div>
 <div id="callBox" hidden><div id="callAva">📞</div><div><b id="callWho"></b><div id="callTxt"></div></div></div>
 <div id="objective" hidden><div id="objChap"></div><div id="objTitle"></div><div id="objText"></div><div class="jobRow"><span id="objDist"></span><span id="objTime"></span></div><div id="objTeam"></div></div>
@@ -94,7 +94,6 @@
 <div id="storyEnd" class="screen" hidden><div class="card"><h2 id="endTitle"></h2><p class="sub" id="endText"></p><div class="rowEnd"><button id="endClose" class="big" style="width:auto;margin:0">CONTINUE</button></div></div></div>
 
 <div id="tags"></div>
-<div id="hudEdit" hidden><span id="hudSel">Drag any button to move it.</span><input type="range" id="hudScale" min="0.5" max="1.8" step="0.05" value="1"><button id="hudReset">Reset all</button><button id="hudDone" class="big">DONE</button></div>
 
 <div id="board" class="screen" hidden><div class="card"><h2 id="boardTitle">Job board</h2><div id="boardList"></div><div class="rowEnd"><button id="boardRefresh">New offers</button><button id="boardClose">Close [J]</button></div></div></div>
 <div id="garage" class="screen" hidden><div class="card"><h2>Garage</h2><p class="sub">Switching vehicles refuels you, cancels any active job and is shared with other players.</p>
@@ -104,8 +103,8 @@
 <div id="pause" class="screen" hidden><div class="card"><h2>Menu</h2>
   <label>Graphics<select id="quality"><option value="low">Low (fast)</option><option value="medium">Medium</option><option value="high">High</option></select></label>
   <label>Volume<input id="volume" type="range" min="0" max="1" step="0.05" value="0.5"></label>
-  <label class="inl"><input type="checkbox" id="speechChk" checked> Read story dialogue aloud (voice)</label>
-  <button id="hudEditBtn" class="big">Customize buttons (move / resize)</button>
+  <label>Friends voice volume<input id="voiceVol" type="range" min="0" max="1" step="0.05" value="1"></label>
+  <div class="row2"><button id="setMic">🎤 Mic on/off</button><button id="setFs">⛶ Full screen</button></div><div class="row2"><button id="setTeam">👥 Go to friends</button><button id="setStory">📖 Story</button></div>
   <div class="row2"><button id="pauseResume" class="big">Resume</button><button id="pauseLeave">Quit to menu</button></div>
   <div class="note" id="pauseInfo"></div></div></div>
 

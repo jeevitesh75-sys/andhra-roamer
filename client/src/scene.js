@@ -440,14 +440,11 @@ export class Scene3D {
     const rnd = mulberry32(2024), w = this.world; this.npcs = [];
     const roads = w.trafficRoads || w.roads.filter(r => r.kind !== 'ghat');
     const colors = ['#e74c3c', '#f1c40f', '#ecf0f1', '#3498db', '#2ecc71', '#e67e22', '#9b59b6', '#bdc3c7', '#1abc9c', '#c0392b'];
-    // ambient traffic: cars, motorbikes, buses and lorries on roads around the cities (so there is always life near you)
-    const hubs = (w.cities || []).filter(c => c.tier >= 1);
-    const near = r => { const p = w.roadPoint(r, r.len / 2, 0, {}); for (const c of hubs) if ((c.x - p.x) ** 2 + (c.z - p.z) ** 2 < 6000 * 6000) return true; return false; };
-    let pool = w.roads.filter(r => r.cls <= 6 && r.len > 150 && near(r)); if (pool.length < 20) pool = roads;
-    for (let i = 0; i < 170; i++) {
+    const near = roads.filter(r => { const x = r.pts[0], z = r.pts[1]; for (const c of w.cities) if ((c.x - x) ** 2 + (c.z - z) ** 2 < 7000 * 7000) return true; return false; }), pool = near.length > 40 ? near : roads;
+    for (let i = 0; i < 280; i++) {
       const road = pool[Math.floor(rnd() * pool.length)], r = rnd();
-      const type = r < 0.38 ? 'car' : r < 0.65 ? 'bike' : r < 0.8 ? 'bus' : 'lorry';
-      const speed = type === 'car' ? 12 + rnd() * 9 : type === 'bike' ? 10 + rnd() * 9 : type === 'bus' ? 10 + rnd() * 5 : 9 + rnd() * 5;
+      const type = r < 0.38 ? 'car' : r < 0.72 ? 'bike' : r < 0.86 ? 'bus' : 'lorry';
+      const speed = type === 'car' ? 17 + rnd() * 10 : type === 'bike' ? 15 + rnd() * 9 : type === 'bus' ? 13 + rnd() * 6 : 11 + rnd() * 6;
       this.npcs.push({ id: i, road, s0: rnd() * road.len * 2, speed, type, color: colors[Math.floor(rnd() * colors.length)] });
     }
     this.npcPos = this.npcs.map(() => ({ x: 0, z: 0, y: 0, h: 0 })); this._rp = {};

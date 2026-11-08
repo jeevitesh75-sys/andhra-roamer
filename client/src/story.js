@@ -2,7 +2,6 @@
 // Works online (server decides when steps advance) and offline (LocalStory mirrors the server rules for solo play).
 import { CHAPTERS, ROLES, NPCS, ROLE_ORDER, ANCHORS, QUESTIONS, RADIO_CHATTER, THUG_LOOK, stepById } from './storydata.js';
 import { mulberry32, strHash } from './noise.js';
-import { Speech } from './speech.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,7 +29,6 @@ export class StoryClient {
     $('lobbyLeave').onclick = () => { $('lobby').hidden = true; H.closeStoryLobby && H.closeStoryLobby(); };
     $('lobbyStart').onclick = () => { const ch = Number($('lobbyCh').value) || 1; if (this.net && this.net.status === 'online') this.net.sendStory('sstart', { ch }); else this.local.start(ch); $('lobby').hidden = true; };
     $('cineSkip').onclick = () => this.endCine(true);
-    { const b = $('cineVoice'); if (b) { b.textContent = Speech.on ? '🔊 Voice ON' : '🔇 Voice OFF'; b.onclick = () => { Speech.set(!Speech.on); b.textContent = Speech.on ? '🔊 Voice ON' : '🔇 Voice OFF'; const t = $('speechChk'); if (t) t.checked = Speech.on; if (Speech.on && this.cine) { const sh = this.cine.shots[this.cine.shot]; Speech.speak(sh.text, sh.who); } }; } }
     $('endClose').onclick = () => { $('storyEnd').hidden = true; };
     $('hackCancel').onclick = () => this.closeHack(false);
   }
@@ -87,7 +85,7 @@ export class StoryClient {
     if (s.id !== this.curId) this.beginStep(s);
     this.updatePanel();
   }
-  clear() { this.list = []; this.cine && this.endCine(false); $('objective').hidden = true; $('choice').hidden = true; this.closeHack(false); this.G.scene && this.G.scene.setBeacon(null); this.gang = []; this.G.setStars && this.G.setStars(0); }
+  clear() { if (this.G.wpStory) { this.G.wp = null; this.G.wpStory = false; this.G.scene && this.G.scene.setWaypoint(null); } this.wpKey = ''; this.list = []; this.cine && this.endCine(false); $('objective').hidden = true; $('choice').hidden = true; this.closeHack(false); this.G.scene && this.G.scene.setBeacon(null); this.gang = []; this.G.setStars && this.G.setStars(0); }
   beginStep(s) {
     const G = this.G, H = this.H, def = stepById(s.id); if (!def) return; this.clear(); this.curId = s.id; this.def = def.step; this.idx = 0; this.sentDone = this.sentReady = ''; this.hackDone = false;
     G.heat = !!def.step.heat; if (G.law) G.law.setCheckpoints(def.step.checkpoints ? [{ ...this.anchor('checkpoint') }] : []);
@@ -104,16 +102,17 @@ export class StoryClient {
   playerPos() { const G = this.G; return G.foot ? G.foot : G.veh; }
   advanceObj() { this.idx++; this.G.scene.setBeacon(null); if (this.idx >= this.list.length) this.finishStep(); else this.H.toast(this.list[this.idx].text, 3000); }
   finishStep() {
-    if (this.sentDone === this.curId) return; this.sentDone = this.curId; this.H.toast('Your part is done. Waiting for the team...', 2500);
+    if (this.sentDone === this.curId) return; this.waitSince = Date.now(); this.sentDone = this.curId; this.H.toast('Your part is done. Waiting for the team...', 2500);
     if (this.online) this.net.sendStory('sdone', { id: this.curId }); else this.local.done(this.curId);
   }
 
   /* ------------------------------------------------ per-frame */
   update(dt) {
     const G = this.G; if (!this.active) return; if (this.cine) return this.updateCine(dt);
-    const o = this.cur(), P = this.playerPos(); if (!o || !P || !this.def) return;
+    const o = this.cur(), P = this.playerPos(); if (!o && this.def && this.def.need === 'all' && ((this.wt = (this.wt || 0) + dt) > 1)) { this.wt = 0; this.updatePanel(); } if (!o || !P || !this.def) return;
     const A = o.at ? this.anchor(o.at) : null, d = A ? Math.hypot(A.x - P.x, A.z - P.z) : 0, inVeh = !G.foot;
     if (A && o.k !== 'clear') G.scene.setBeacon(A, '#ffd24a');
+    if (A) { const key = this.curId + this.idx; if (this.wpKey !== key) { this.wpKey = key; G.wp = { x: A.x, z: A.z, label: A.label }; G.wpStory = true; G.scene.setWaypoint(G.wp); } }
     if (o.k === 'goto') { const okV = o.veh === 'in' ? inVeh : o.veh === 'out' ? !inVeh : true; if (d <= o.r && okV) { if (o.ask && !this.localQ[o.ask]) { this.localQ[o.ask] = 1; this.ask(o.ask); } this.advanceObj(); } else if (d <= o.r && !okV && (this.warnT = (this.warnT || 0) - dt) < 0) { this.warnT = 4; this.H.toast(o.veh === 'in' ? 'You need to be in a vehicle (press E near a parked one)' : 'Get out of the vehicle first (E)', 2000); } }
     else if (o.k === 'hack') { if (this.hackCool > 0) this.hackCool -= dt; if (d <= o.r && !this.hack && !(this.hackCool > 0)) this.openHack(o); }
     else if (o.k === 'escape') { if (!o.started) { o.started = true; G.setStars(o.stars, 'story'); } else if (!G.police.active && !G.lawChase() && !G.arrestBusy()) this.advanceObj(); }
@@ -127,11 +126,25 @@ export class StoryClient {
   updatePanel() {
     const s = this.state, box = $('objective'); if (!s || !s.on || this.cine || !this.def || this.def.need !== 'all') { box.hidden = true; return; }
     box.hidden = false; const o = this.cur(); $('objChap').textContent = `CHAPTER ${s.ch} - ${(CHAPTERS[s.ch - 1] || {}).name}`; $('objTitle').textContent = this.def.title;
-    $('objText').textContent = o ? o.text : 'Done - waiting for the team';
+    let txt = o ? o.text : 'Your part is done!';
+    if (!o) {
+      const role0 = this.myRole || 'mastermind', obj = (this.def.variants ? this.def.variants[s.ending || 'good'] : this.def).obj || this.def.obj, pend = Object.entries(s.roles || {}).filter(([id]) => !s.done.includes(Number(id)));
+      if (pend.length) { txt = 'Your part is done. Waiting for: ' + pend.map(([id, r]) => { const L = obj[r] || obj.default, last = Array.isArray(L) ? L[L.length - 1] : L; return `${ROLES[r].emoji} ${(s.names && s.names[id]) || ROLES[r].short} (${ROLES[r].short}) - ${last ? last.text : 'finishing up'}`; }).join(' | ') + '. Go and help them!'; }
+      else txt = 'Your part is done. Waiting for the next scene...';
+      let b = $('objSkip'); if (!b) { b = document.createElement('button'); b.id = 'objSkip'; b.textContent = 'CONTINUE WITHOUT THEM'; b.onclick = () => { if (this.online) this.net.sendStory('sskip', {}); else this.local.done(this.curId); b.hidden = true; }; $('objective').appendChild(b); }
+      b.hidden = !(this.waitSince && Date.now() - this.waitSince > 20000);
+    } else { const b = $('objSkip'); if (b) b.hidden = true; }
+    $('objText').textContent = txt;
     const names = Object.entries(s.roles || {}).map(([id, r]) => `${ROLES[r].emoji} ${ROLES[r].short} ${s.done.includes(Number(id)) ? '<span class="done">done</span>' : '...'}`);
     $('objTeam').innerHTML = names.join(' &nbsp; ') + (Object.keys(s.roles || {}).length < 4 ? ' &nbsp; (AI teammates cover the rest)' : '');
   }
-  hud() { const o = this.cur(), P = this.playerPos(); if (!o || !o.at || !P) { $('objDist').textContent = ''; return; } const A = this.anchor(o.at), d = Math.hypot(A.x - P.x, A.z - P.z); $('objDist').textContent = d > 1000 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m'; }
+  hud() {
+    const o = this.cur(), P = this.playerPos(), mk = $('objMark'); if (!o || !o.at || !P || this.cine || !this.active) { $('objDist').textContent = ''; mk.hidden = true; return; }
+    const A = this.anchor(o.at), d = Math.hypot(A.x - P.x, A.z - P.z), txt = d > 1000 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m'; $('objDist').textContent = txt;
+    const sp = this.G.scene.toScreen(A.x, this.G.world.heightAt(A.x, A.z) + 9, A.z, this._sp || (this._sp = {})), W = window.innerWidth, Hh = window.innerHeight; let x = sp.x, y = sp.y; const ok = sp.visible && x > 30 && x < W - 30 && y > 60 && y < Hh - 60;
+    if (!ok) { const hd = this.G.foot ? this.G.camYaw + this.G.orbit : this.G.veh.h, a = Math.atan2(A.x - P.x, A.z - P.z) - hd, cx = W / 2, cy = Hh / 2; x = cx - Math.sin(a) * Math.min(W * 0.4, 360); y = Math.max(80, Math.min(Hh - 90, cy - Math.cos(a) * Math.min(Hh * 0.35, 200))); }
+    mk.hidden = false; mk.style.left = x + 'px'; mk.style.top = y + 'px'; mk.innerHTML = `<i>${ok ? '▼' : '◉'}</i>${esc(A.label)}<br>${txt}`;
+  }
   blips() { const o = this.cur(), out = []; if (this.active && o && o.at) { const A = this.anchor(o.at); out.push({ x: A.x, z: A.z, color: o.k === 'clear' ? '#ff4040' : '#ffd24a', r: 6, glyph: '!', label: A.label }); } for (const g of this.gang) if (g.hp > 0) out.push({ x: g.x, z: g.z, color: '#ff4040', r: 3 }); return out; }
 
   /* ------------------------------------------------ questions & votes */
@@ -157,7 +170,7 @@ export class StoryClient {
     this.setShot(0);
   }
   setShot(i) {
-    const c = this.cine, sh = c.shots[i]; c.shot = i; c.shotT = 0; const who = NPCS[sh.who] || ROLES[sh.who] || { name: '', color: '#fff' }; $('cineWho').textContent = (who.emoji || '') + ' ' + (who.name || ''); $('cineWho').style.color = who.color || '#fff'; $('cineText').textContent = sh.text || ''; Speech.speak(sh.text, sh.who); const est = Speech.on && Speech.supported ? Speech.estimate(sh.text, sh.who) : 0; if (est > sh.dur) sh.dur = est;
+    const c = this.cine, sh = c.shots[i]; c.shot = i; c.shotT = 0; const who = NPCS[sh.who] || ROLES[sh.who] || { name: '', color: '#fff' }; $('cineWho').textContent = (who.emoji || '') + ' ' + (who.name || ''); $('cineWho').style.color = who.color || '#fff'; $('cineText').textContent = sh.text || '';
   }
   updateCine(dt) {
     const c = this.cine, sh = c.shots[c.shot], cam = this.G.scene.camera, A = c.A; c.shotT += dt; c.T += dt;
@@ -169,7 +182,7 @@ export class StoryClient {
     if (c.shotT >= sh.dur) { if (c.shot + 1 < c.shots.length) this.setShot(c.shot + 1); else this.endCine(false); }
   }
   endCine() {
-    Speech.stop(); if (!this.cine) return; this.cine = null; $('cine').classList.remove('on'); setTimeout(() => { if (!this.cine) $('cine').hidden = true; }, 800); $('cineTitle').classList.remove('on');
+    if (!this.cine) return; this.cine = null; $('cine').classList.remove('on'); setTimeout(() => { if (!this.cine) $('cine').hidden = true; }, 800); $('cineTitle').classList.remove('on');
     if (this.sentReady !== this.curId) { this.sentReady = this.curId; if (this.online) this.net.sendStory('sready', { id: this.curId }); else this.local.ready(this.curId); }
     $('cineReady').textContent = this.online ? 'Waiting for the team...' : '';
   }

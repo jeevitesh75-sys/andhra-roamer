@@ -10,42 +10,27 @@ export class Net {
   /** server-synchronised wall clock (ms) */
   now() { return Date.now() + this.offset; }
 
-  static normalize(u) {
-    u = String(u || '').trim().replace(/\/+$/, ''); if (!u) return '';
-    if (/^https:\/\//i.test(u)) u = 'wss://' + u.slice(8); else if (/^http:\/\//i.test(u)) u = 'ws://' + u.slice(7); else if (!/^wss?:\/\//i.test(u)) u = 'wss://' + u;
-    try { const p = new URL(u.replace(/^ws/, 'http')); if (typeof location !== 'undefined' && location.protocol === 'https:' && u.startsWith('ws://') && !/^(localhost|127\.)/.test(p.hostname)) u = 'wss://' + u.slice(5); } catch (e) { /* ignore */ }
-    return u;
-  }
-  get host() { try { return new URL(this.url.replace(/^ws/, 'http')).host; } catch (e) { return this.url; } }
   connect(url, profile) {
-    this.url = Net.normalize(url); this.profile = profile; this.wanted = true; this.tries = 0;
-    if (!this._hooked && typeof addEventListener !== 'undefined') { this._hooked = true; const kick = () => { if (this.wanted && this.status !== 'online' && !this.opening) { clearTimeout(this.timer); this._open(); } }; addEventListener('online', kick); document.addEventListener('visibilitychange', () => { if (!document.hidden) kick(); }); }
-    this._open();
+    this.url = url; this.profile = profile; this.wanted = true; this.tries = 0; this._open();
   }
-  /** Render's free tier sleeps: an HTTP hit wakes it (the request is held until the server is up), then the WebSocket works */
-  async _wake() {
-    try { const u = new URL(this.url.replace(/^ws/, 'http')), c = new AbortController(), t = setTimeout(() => c.abort(), 15000); await fetch(u.origin + '/health', { mode: 'no-cors', cache: 'no-store', signal: c.signal }); clearTimeout(t); } catch (e) { /* offline or still booting: the WebSocket attempt decides */ }
-  }
-  async _open() {
-    if (!this.wanted || !this.url || this.opening) return;
-    clearTimeout(this.timer); this.opening = true; const n = this.tries;
-    this.setStatus('connecting', n < 1 ? `Connecting to ${this.host}...` : `Waking the free server (try ${n + 1}) - up to 1 minute. Tap here to change server`);
-    if (n >= 1 || !this.awake) await this._wake();
-    this.opening = false; if (!this.wanted) return;
+  _open() {
+    if (!this.wanted || !this.url) return;
+    clearTimeout(this.timer);
+    this.setStatus('connecting', this.tries > 1 ? 'Waking the free server... this can take up to a minute' : 'Connecting...');
     let ws;
     try { ws = new WebSocket(this.url); } catch (e) { return this._retry(); }
     this.ws = ws;
-    const giveUp = setTimeout(() => { if (ws.readyState !== 1) { try { ws.close(); } catch (e) { /* ignore */ } } }, 25000);
-    ws.onopen = () => { clearTimeout(giveUp); this.tries = 0; this.awake = true; this.send({ t: 'join', ...this.profile }); this._ping(); };
+    const giveUp = setTimeout(() => { if (ws.readyState !== 1) { try { ws.close(); } catch (e) { /* ignore */ } } }, 20000);
+    ws.onopen = () => { clearTimeout(giveUp); this.tries = 0; this.send({ t: 'join', ...this.profile }); this._ping(); };
     ws.onmessage = ev => { try { this._msg(JSON.parse(ev.data)); } catch (e) { /* ignore bad frame */ } };
     ws.onclose = () => { clearTimeout(giveUp); this.remotes.clear(); this.id = 0; if (this.status === 'online') this.h.onLeaveAll && this.h.onLeaveAll(); this._retry(); };
     ws.onerror = () => { /* onclose follows */ };
   }
   _retry() {
     if (!this.wanted) return;
-    this.tries++; this.awake = false;
-    this.setStatus('offline', `Playing offline - retrying ${this.host} (tap here to change server)`);
-    this.timer = setTimeout(() => this._open(), Math.min(5000, 1200 + this.tries * 600));
+    this.setStatus('offline', 'Playing offline. Retrying...');
+    this.tries++;
+    this.timer = setTimeout(() => this._open(), Math.min(15000, 2000 + this.tries * 2000));
   }
   disconnect() { this.wanted = false; clearTimeout(this.timer); if (this.ws) try { this.ws.close(); } catch (e) { /* ignore */ } this.remotes.clear(); this.setStatus('offline', ''); }
   send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); }
@@ -124,4 +109,4 @@ export class Net {
     return out;
   }
 }
-export const FLAG = { BRAKE: 1, LIGHTS: 2, HORN: 4, REVERSE: 8, FOOT: 16, RUN: 32, AIR: 64, GUN: 128 };
+export const FLAG = { BRAKE: 1, LIGHTS: 2, HORN: 4, REVERSE: 8, FOOT: 16, RUN: 32, AIR: 64, GUN: 128, ANIM: 256, AIM: 512, PASS: 1024 };
