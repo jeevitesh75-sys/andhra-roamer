@@ -108,8 +108,12 @@ export class StoryClient {
 
   /* ------------------------------------------------ per-frame */
   update(dt) {
-    const G = this.G; if (!this.active) return; if (this.cine) return this.updateCine(dt);
-    const o = this.cur(), P = this.playerPos(); if (!o && this.def && this.def.need === 'all' && ((this.wt = (this.wt || 0) + dt) > 1)) { this.wt = 0; this.updatePanel(); } if (!o || !P || !this.def) return;
+    const G = this.G; if (!this.active) return; if (this.cine) return this.updateCine(dt); this.updateGang(dt);   // runs even when your own part is finished: the host keeps simulating + syncing the fight for teammates
+    const o = this.cur(), P = this.playerPos(); if (!o && this.def && this.def.need === 'all' && ((this.wt = (this.wt || 0) + dt) > 1)) { this.wt = 0; this.updatePanel(); } if (o && o.k !== 'clear' && this.gang.length && this.gangKey && this.gangKey.startsWith(this.curId + ':') && this.gang.every(g => g.hp <= 0)) { const ci = this.list.findIndex((x, i) => i >= this.idx && x.k === 'clear'); if (ci >= 0) { this.idx = ci + 1; this.G.scene.setBeacon(null); this.finishStep(); this.H.toast('The fight is already won - your part is done', 3000); return; } }
+    if (!o || !P || !this.def) return;
+    // the shared fight is already won (e.g. by the host): nothing before it matters any more, so finish this part right away
+    const ci = this.list.findIndex((x, i) => i >= this.idx && x.k === 'clear');
+    if (ci >= 0 && o.k !== 'clear') { const L = this.list[ci], key = this.curId + ':' + L.at + ':' + L.n; if (this.gangKey === key && this.gang.length && !this.gang.some(g => g.hp > 0)) { this.wonT = (this.wonT || 0) + dt; if (this.wonT > 1.5) { this.wonT = 0; this.H.toast('Your team already won the fight!', 2500); this.idx = this.list.length; this.G.scene.setBeacon(null); this.finishStep(); return; } } else this.wonT = 0; }
     const A = o.at ? this.anchor(o.at) : null, d = A ? Math.hypot(A.x - P.x, A.z - P.z) : 0, inVeh = !G.foot;
     if (A && o.k !== 'clear') G.scene.setBeacon(A, '#ffd24a');
     if (A) { const key = this.curId + this.idx; if (this.wpKey !== key) { this.wpKey = key; G.wp = { x: A.x, z: A.z, label: A.label }; G.wpStory = true; G.scene.setWaypoint(G.wp); } }
@@ -121,7 +125,6 @@ export class StoryClient {
     else if (o.k === 'clear') { G.scene.setBeacon(A, '#ff4040'); this.updateGangObj(o, d, P); }
     if (this.def.radioChatter && (this.chatterT -= dt) < 0) { this.chatterT = 18; this.H.radio(RADIO_CHATTER[Math.floor(Math.random() * RADIO_CHATTER.length)]); }
     if (G.heat && G.law && !G.arrestBusy()) { const cp = G.law.checkpointCheck({ x: P.x, z: P.z, speed: G.veh.speed, onFoot: !!G.foot }); if (cp && !G.checkpointRun) { G.checkpointRun = true; G.setStars(2, 'checkpoint'); } }
-    this.updateGang(dt);
   }
   updatePanel() {
     const s = this.state, box = $('objective'); if (!s || !s.on || this.cine || !this.def || this.def.need !== 'all') { box.hidden = true; return; }

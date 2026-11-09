@@ -53,3 +53,8 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 ## v3f
 - AI teammates are now ONE shared set per room (host simulates, everyone sees). Each AI follows one human (round-robin), so with 2 players + 2 AI each of you gets your own companion.
 - Gang fights are started by whichever player reaches the fight first (non-host asks the host), so nobody is left waiting with no objective.
+
+## v3g
+- After jail / hospital your vehicle is brought to the station road and you get in automatically (fuel refilled).
+- Fixed: once the host finished its own part, the host stopped simulating/syncing the gang, so teammates saw frozen enemies and waited forever. The host now keeps the fight running.
+- If the fight is already won, teammates still on an earlier objective (gate scouting, hacking...) are auto-finished.

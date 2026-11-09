@@ -435,7 +435,16 @@ function die() {
 function respawnAt(st) {
   const ns = st || (G.law.nearestStation(G.foot ? G.foot.x : G.veh.x, G.foot ? G.foot.z : G.veh.z) || {}).st, sp = ns ? ns.door : { x: G.veh.x, z: G.veh.z };
   const fine = Math.min(G.money, 200); G.money -= fine; G.hp = 100; G.dead = null; G.arrest = null; $('wasted').hidden = true; setStars(0);
-  if (!G.foot) exitVehicle(true); G.foot.anim = null; G.foot.x = sp.x; G.foot.z = sp.z; G.foot.y = G.world.heightAt(sp.x, sp.z); G.camInit = false; toast(fine ? `Hospital bill Rs ${fine}` : 'Back on your feet', 2500);
+  if (!G.foot) exitVehicle(true); G.foot.anim = null; G.foot.x = sp.x; G.foot.z = sp.z; G.foot.y = G.world.heightAt(sp.x, sp.z); G.camInit = false; toast(fine ? `Hospital bill Rs ${fine}` : 'Back on your feet', 2500); returnVehicle();
+}
+/** after jail / hospital: your vehicle is brought to the station road and you get in automatically */
+function returnVehicle() {
+  const f = G.foot; if (!f || G.ride) return; const w = G.world, v = G.veh, sn = w.snapToRoad(f.x, f.z, 90, 4);
+  let x = f.x + 5, z = f.z, h = f.h; if (sn) { const p = w.roadPoint(sn.road, sn.s, 0, {}); x = p.x; z = p.z; h = p.h; }
+  if (G.myPark && String(G.myPark).startsWith('me~')) G.lot.dyn.delete(G.myPark);
+  const id = 'me~' + Date.now(); G.myPark = id; v.fuel = v.spec.tank; const e = { id, type: v.type, color: G.vcolor, x, z, h, fuel: v.fuel, mine: true }; G.lot.dyn.set(id, e);
+  f.x = x + Math.cos(h) * 3.2; f.z = z - Math.sin(h) * 3.2; f.y = w.heightAt(f.x, f.z); f.anim = null; G.camInit = false;
+  onEnterReply({ ok: true, id, v: e }); toast('Your vehicle has been brought to you', 2500);
 }
 function setStars(n, why) {
   const pol = G.police, P = G.foot ? footProxy : G.veh;
@@ -453,7 +462,7 @@ function startArrest(why) {
 function arrestStep(dt) {
   const a = G.arrest; if (!a) return; a.t += dt;
   if (a.stage === 'busted' && a.t > 2.5) { a.stage = 'jail'; a.t = 0; G.money -= a.fine; const st = a.st; if (!G.foot) exitVehicle(true); if (st) { G.foot.anim = null; G.foot.x = st.door.x; G.foot.z = st.door.z; G.foot.y = G.world.heightAt(st.door.x, st.door.z); } G.camInit = false; $('wastedTxt').textContent = 'IN CUSTODY'; }
-  if (a.stage === 'jail') { $('wastedSub').textContent = `Questioned by the police... released in ${Math.max(0, Math.ceil(a.time - a.t))}s (fine Rs ${a.fine})`; if (a.t > a.time) { G.arrest = null; $('wasted').hidden = true; toast('Released. Stay out of trouble.', 2500); } }
+  if (a.stage === 'jail') { $('wastedSub').textContent = `Questioned by the police... released in ${Math.max(0, Math.ceil(a.time - a.t))}s (fine Rs ${a.fine})`; if (a.t > a.time) { G.arrest = null; $('wasted').hidden = true; toast('Released. Stay out of trouble.', 2500); returnVehicle(); } }
 }
 function policeBump(v) {
   if (!G.police.active) return;
