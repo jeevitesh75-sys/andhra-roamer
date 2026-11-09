@@ -120,7 +120,8 @@ async function startGame() {
     onParkAdd: (v, by) => { if (by === G.net.id && G.myPark && G.myPark.startsWith('me~')) { const e = G.lot.dyn.get(G.myPark); G.lot.dyn.delete(G.myPark); G.lot.dyn.set(v.id, { ...(e || {}), ...v, mine: true }); G.myPark = v.id; } else G.lot.dyn.set(v.id, v); },
     onParkDel: (id, by) => { G.lot.dyn.delete(id); if (/^s\d+$/.test(id)) G.lot.taken.add(id); if (id === G.myPark && by !== G.net.id) { G.myPark = null; toast('Someone took your vehicle!', 2500); } },
     onEnter: onEnterReply, onStory: s => G.storyC.onState(s), onHost: () => {}, onEv: (k, d, from) => onEv(k, d, from) });
-  const url = new URLSearchParams(location.search).get('server') || (window.GAME_CONFIG && window.GAME_CONFIG.SERVER_URL) || '';
+  let saved = ''; try { saved = localStorage.getItem('serverUrl') || ''; } catch (e) { /* ignore */ }
+  const cfg = (window.GAME_CONFIG && window.GAME_CONFIG.SERVER_URL) || '', url = new URLSearchParams(location.search).get('server') || saved || (/localhost|127\.0\.0\.1/.test(cfg) && !/localhost|127\./.test(location.hostname) ? 'wss://andhra-roamer-server.onrender.com' : cfg);
   if (!G.voice) G.voice = new Voice(G.net, voiceState);
   G.net.disconnect();
   if (url) G.net.connect(url, { name: prof.name, veh: prof.veh, color: prof.color, room: prof.region + '-' + (prof.room || 'open') });
@@ -228,6 +229,7 @@ function initHud() {
   $('pauseResume').onclick = () => togglePause(false);
   $('gearBtn').onclick = () => togglePause($('pause').hidden);
   $('setMic').onclick = () => toggleMic(); $('setFs').onclick = () => toggleFs(); $('setTeam').onclick = () => { togglePause(false); teamJump(); }; $('setStory').onclick = () => { togglePause(false); G.storyC.openLobby(); };
+  { const si = $('serverUrl'); let sv = ''; try { sv = localStorage.getItem('serverUrl') || ''; } catch (e) { /* ignore */ } si.value = sv; $('serverSave').onclick = () => { let u = si.value.trim(); if (u && !/^wss?:\/\//.test(u)) u = 'wss://' + u.replace(/^https?:\/\//, ''); try { if (u) localStorage.setItem('serverUrl', u); else localStorage.removeItem('serverUrl'); } catch (e) { /* ignore */ } toast('Saved. Reloading...', 1200); setTimeout(() => location.reload(), 700); }; }
   $('voiceVol').oninput = e => { G.voiceVol = +e.target.value; if (G.voice) G.voice.setVolume(G.voiceVol); };
   $('pauseLeave').onclick = () => { closeModals(); G.running = false; G.net.disconnect(); clearTags(); $('hud').hidden = true; $('menu').hidden = false; G.audio.update(0, 0, 0, 'car'); persist(); };
   $('quality').value = G.scene.qName; $('quality').onchange = e => { G.scene.setQuality(e.target.value); persist(); };

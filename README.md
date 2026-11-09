@@ -58,3 +58,6 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - After jail / hospital your vehicle is brought to the station road and you get in automatically (fuel refilled).
 - Fixed: once the host finished its own part, the host stopped simulating/syncing the gang, so teammates saw frozen enemies and waited forever. The host now keeps the fight running.
 - If the fight is already won, teammates still on an earlier objective (gate scouting, hacking...) are auto-finished.
+
+## v3h
+- Settings has a 'Server address' box (saved on the phone) so you can fix a wrong/missing server without redeploying. If config.js still points at localhost the client falls back to wss://andhra-roamer-server.onrender.com.
