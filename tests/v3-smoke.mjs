@@ -1,6 +1,6 @@
 import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
 import { readFileSync } from 'fs'; import { spawn } from 'child_process'; import http from 'http'; import path from 'path'; import fs from 'fs';
-const names=[...new Set(readFileSync('tests/browser-test.mjs','utf8').match(/\['ACES[^\]]+\]/)[0].match(/'(\w+)'/g).map(s=>s.slice(1,-1)))];
+const names=[...new Set(['Line','LineBasicMaterial'].concat(readFileSync('tests/browser-test.mjs','utf8').match(/\['ACES[^\]]+\]/)[0].match(/'(\w+)'/g).map(s=>s.slice(1,-1))))];
 const mock=readFileSync('tests/mock-three.mjs','utf8')+`\nconst T=makeMockThree().THREE;\n`+names.map(n=>`export const ${n}=T.${n};`).join('\n');
 const srv=spawn('node',['server/server.js'],{env:{...process.env,PORT:'8099'}});
 const mime={'.js':'text/javascript','.html':'text/html','.css':'text/css'};
@@ -24,12 +24,19 @@ await ev(A,()=>{const g=__game;g.joy.setVec(0,0);}); await A.screenshot({path:'/
 // walk back & enter
 await ev(A,()=>{const g=__game,e=g.lot.dyn.get(g.myPark);g.foot.x=e.x+2.5;g.foot.z=e.z;}); await A.keyboard.press('KeyE'); await A.waitForTimeout(1500);
 console.log('A back in vehicle:',await ev(A,()=>!__game.foot));
+// passenger: B gets into A's moving vehicle and shoots
+await ev(B,()=>{const r=[...__game.net.remotes.values()][0],s=r.snaps[r.snaps.length-1];__game.veh.reset(s.x+9,s.z,0);__game.veh.speed=0;}); await B.waitForTimeout(500); await B.keyboard.press('KeyE'); await B.waitForTimeout(1500); console.log('B foot after E:',await ev(B,()=>!!__game.foot),await ev(B,()=>document.getElementById('toast')?document.getElementById('toast').textContent:''));
+await ev(A,()=>{__game.veh.speed=0;}); await B.waitForTimeout(600);
+await ev(B,async()=>{const r=[...__game.net.remotes.values()][0],s=r.snaps[r.snaps.length-1];__game.foot.x=s.x+2.4;__game.foot.z=s.z;}); await B.keyboard.press('KeyE'); await B.waitForTimeout(800);
+await ev(B,()=>{__game.keys.KeyG=true;}); await B.waitForTimeout(500); await ev(B,()=>{__game.keys.KeyG=false;});
+console.log('B shot while riding, A sees AIM flag:',await ev(A,()=>{const r=[...__game.net.remotes.values()][0];return r.snaps.slice(-8).some(s=>(s.f&1024)&&(s.f&512));}));
+await B.keyboard.press('KeyE'); await B.waitForTimeout(400); console.log('B got off:',await ev(B,()=>!__game.ride));
 // death/arrest -> vehicle returned automatically
 await ev(A,()=>{__game.exitVehicle&&0; __game.hurt(500,'test');}); await A.waitForTimeout(7500);
 console.log('after wasted: in vehicle again:',await ev(A,()=>!__game.foot&&!__game.dead),'foot',await ev(A,()=>!!__game.foot),'dead',await ev(A,()=>!!__game.dead));
 // story: 4-role lobby via server
 await ev(A,()=>__game.storyC.openLobby()); await A.waitForTimeout(300); await ev(B,()=>__game.storyC.openLobby()); await B.waitForTimeout(300);
-await ev(A,()=>{__game.net.send({t:'role',role:'mastermind'});}); await ev(B,()=>{__game.net.send({t:'role',role:'driver'});}); await A.waitForTimeout(300);
+await ev(A,()=>{__game.net.send({t:'role',role:'arjun'});}); await ev(B,()=>{__game.net.send({t:'role',role:'karthik'});}); await A.waitForTimeout(300);
 await ev(A,()=>__game.net.send({t:'sstart',ch:1})); await A.waitForTimeout(800);
 console.log('story step A:',await ev(A,()=>__game.net.story.id),'B:',await ev(B,()=>__game.net.story.id),'cine',await ev(A,()=>!!__game.storyC.cine));
 await A.screenshot({path:'/tmp/claude-0/-home-claude/d38ec714-3ad8-5178-8d1f-bc0f7ab12ae2/scratchpad/cine.png'});

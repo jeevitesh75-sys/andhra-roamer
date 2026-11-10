@@ -1,27 +1,27 @@
 'use strict';
 /**
- * ANDHRA UNDERWORLD - THE FOUR: server-side story engine.
+ * ANDHRA UNDERWORLD: BLOOD & BETRAYAL - server-side story engine (two players).
  *
  * The server does not know the map. It only tracks WHICH step the shared story is on and WHO has finished it:
  *   cut  : cutscene       - advances when every story player is "ready" (or after CUT_TIMEOUT)
  *   all  : mission        - advances when every story player reports "done" (each player's task depends on their role)
- *   vote : decision       - majority vote (ties go to the Mastermind, then the lowest player id); sets choices[key]
+ *   vote : decision       - majority vote (ties go to Arjun, then the lowest player id); sets choices[key]
  * The client holds the full script (client/src/storydata.js); tests/story-sync-test.mjs checks both files agree.
  *
- * Roles (exactly four main characters): mastermind, driver, hacker, insider. A role nobody holds is played by an AI
+ * Roles (exactly two main characters): arjun, karthik. A role nobody holds is played by an AI
  * teammate: its tasks complete themselves and it only speaks in cutscenes/radio.
  */
-const ROLES = ['mastermind', 'driver', 'hacker', 'insider'];
+const ROLES = ['arjun', 'karthik'];
 const CUT_TIMEOUT = 75000, VOTE_TIMEOUT = 50000, MISSION_STALE = 0;
 
 /** step lists per chapter: [id, need, extra] */
 const CHAPTERS = [
-  { id: 1, name: 'THE BEGINNING', steps: [['c1_intro', 'cut'], ['c1_explore', 'all'], ['c1_meet_king', 'cut'], ['c1_first_job', 'all']] },
-  { id: 2, name: 'THE UNDERWORLD', steps: [['c2_org', 'cut'], ['c2_rival', 'all'], ['c2_patrol', 'all'], ['c2_end', 'cut']] },
-  { id: 3, name: 'POLICE INVESTIGATION', steps: [['c3_officer', 'cut'], ['c3_questioned', 'all'], ['c3_checkpoint', 'all'], ['c3_wanted', 'all'], ['c3_end', 'cut']] },
-  { id: 4, name: 'BETRAYAL', steps: [['c4_leak', 'cut'], ['c4_hack', 'all'], ['c4_talk', 'cut'], ['c4_choice', 'vote', ['confront', 'protect']], ['c4_run', 'all'], ['c4_end', 'cut']] },
-  { id: 5, name: 'THE KING', steps: [['c5_truth', 'cut'], ['c5_assault', 'all'], ['c5_end', 'cut']] },
-  { id: 6, name: 'FINAL DECISION', steps: [['c6_dilemma', 'cut'], ['c6_final', 'vote', ['good', 'bad', 'secret']], ['c6_ending', 'all'], ['c6_epilogue', 'cut']] },
+  { id: 1, name: 'TWO FRIENDS', steps: [['c1_intro', 'cut'], ['c1_explore', 'all'], ['c1_call', 'cut'], ['c1_drive', 'all'], ['c1_king', 'cut'], ['c1_first_job', 'all']] },
+  { id: 2, name: 'THE KINGDOM', steps: [['c2_org', 'cut'], ['c2_meeting', 'all'], ['c2_rival', 'all'], ['c2_escape', 'all'], ['c2_secret', 'all'], ['c2_protect', 'all'], ['c2_end', 'cut']] },
+  { id: 3, name: 'THE POLICE', steps: [['c3_dev', 'cut'], ['c3_station', 'all'], ['c3_checkpoint', 'all'], ['c3_wanted', 'all'], ['c3_arrest', 'cut'], ['c3_choice', 'vote', ['lawyer', 'escape']], ['c3_out', 'all'], ['c3_end', 'cut']] },
+  { id: 4, name: 'THE SECRET', steps: [['c4_leak', 'cut'], ['c4_fight', 'cut'], ['c4_split', 'all'], ['c4_reunite', 'all'], ['c4_choice', 'vote', ['forgive', 'cold']]] },
+  { id: 5, name: 'BLOOD AND BETRAYAL', steps: [['c5_kidnap', 'cut'], ['c5_chase', 'all'], ['c5_factory', 'all'], ['c5_confront', 'cut'], ['c5_escape', 'all'], ['c5_choice', 'vote', ['trustDev', 'doubtDev']]] },
+  { id: 6, name: 'THE FINAL NIGHT', steps: [['c6_plan', 'cut'], ['c6_chase', 'all'], ['c6_port', 'all'], ['c6_dialogue', 'cut'], ['c6_final', 'vote', ['friendship', 'underworld', 'betrayal']], ['c6_ending', 'all'], ['c6_epilogue', 'cut']] },
 ];
 const stepOf = (ch, i) => { const c = CHAPTERS[ch - 1]; const s = c && c.steps[i]; return s ? { id: s[0], need: s[1], opts: s[2] || null } : null; };
 
@@ -33,7 +33,7 @@ class Story {
     this.votes = new Map(); this.choices = {}; this.ending = null; this.timer = null; this.rev = (this.rev || 0) + 1;
   }
   players() { return [...this.room.players.values()]; }
-  /** players that take part in the story = role holders (at most four) */
+  /** players that take part in the story = role holders (at most two) */
   actors() { return this.players().filter(p => this.roles[p.id]); }
   hostId() { let best = 0; for (const p of this.room.players.values()) if (!best || p.id < best) best = p.id; return best; }
   pub() {
@@ -61,7 +61,7 @@ class Story {
       const free = ROLES.find(r => !taken.has(r)); if (!free) break;
       this.roles[q.id] = free; taken.add(free);
     }
-    this.choices = {}; if (ch > 1) this.choices = { c4_choice: 'protect' };
+    this.choices = {}; if (ch > 1) this.choices = { c4_choice: 'cold', c3_choice: 'lawyer', c5_choice: 'trustDev' };
     this.on = true; this.ended = false; this.ending = null; this._enter(ch, 0); return '';
   }
   stop() { const roles = this.roles; this.reset(); this.roles = roles; this.push(); }
@@ -93,8 +93,8 @@ class Story {
       const tally = {}; for (const [pid, v] of this.votes) tally[v] = (tally[v] || 0) + 1;
       const opts = this._options(s); let best = null, bn = -1, tie = false;
       for (const o of opts) { const n = tally[o] || 0; if (n > bn) { best = o; bn = n; tie = false; } else if (n === bn) tie = true; }
-      if (tie || bn <= 0) {                                   // ties: the Mastermind's vote, else the lowest-id voter, else the first option
-        const m = hs.find(p => this.roles[p.id] === 'mastermind'), mv = m && this.votes.get(m.id);
+      if (tie || bn <= 0) {                                   // ties: Arjun's vote, else the lowest-id voter, else the first option
+        const m = hs.find(p => this.roles[p.id] === 'arjun'), mv = m && this.votes.get(m.id);
         const ids = [...this.votes.keys()].sort((a, b) => a - b);
         best = (mv && opts.includes(mv) && mv) || (ids.length && opts.includes(this.votes.get(ids[0])) && this.votes.get(ids[0])) || opts[0];
       }
@@ -103,7 +103,7 @@ class Story {
       this.advance();
     }
   }
-  _options(s) { return s.opts.filter(o => o !== 'secret' || this.choices.c4_choice === 'protect'); }
+  _options(s) { return s.opts.filter(o => o !== 'betrayal' || this.choices.c4_choice === 'cold' || this.choices.c5_choice === 'doubtDev'); }
   markDone(p, id) { if (!this.on || id !== this.id || !this.roles[p.id]) return; const s = stepOf(this.ch, this.step); if (!s || s.need !== 'all') return; this.done.add(p.id); this.doneAt.set(p.id, Date.now()); this.push(); this._resolve(); }
   markReady(p, id) { if (!this.on || id !== this.id || !this.roles[p.id]) return; const s = stepOf(this.ch, this.step); if (!s || s.need !== 'cut') return; this.ready.add(p.id); this.push(); this._resolve(); }
   vote(p, id, val) {

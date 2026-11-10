@@ -32,7 +32,7 @@
       <label>Room code<input id="room" maxlength="12" placeholder="public" autocomplete="off"></label>
     </div>
     <button id="startBtn" class="big">DRIVE (FREE ROAM)</button>
-    <button id="storyBtn" class="big story">ANDHRA UNDERWORLD &ndash; THE FOUR<small>4-player crime story &middot; play online with friends</small></button>
+    <button id="storyBtn" class="big story">ANDHRA UNDERWORLD: BLOOD &amp; BETRAYAL<small>2-player co-op crime story &middot; voiced dialogue</small></button>
     <div id="menuStatus" class="note"></div>
     <div class="keys"><b>W A S D</b> drive (<b>S</b> = brake, then reverse) &nbsp; <b>Space</b> handbrake &nbsp; <b>H</b> horn &nbsp; <b>L</b> lights &nbsp; <b>C</b> camera &nbsp; <b>J</b> jobs &nbsp; <b>M</b> map &nbsp; <b>F</b> refuel &nbsp; <b>R</b> reset &nbsp; <b>V</b> vehicle &nbsp; <b>Enter</b> chat &nbsp; <b>Tab</b> players &nbsp; <b>E</b> get out / in &nbsp; <b>Shift</b> run &nbsp; <b>G</b> shoot &nbsp; <b>T</b> story &nbsp; <b>Y</b> join team &nbsp; <b>B</b> mic</div>
   </div>
@@ -81,14 +81,14 @@
   <div class="bar top"></div><div class="bar bottom"></div>
   <div id="cineTitle"></div>
   <div id="cineSub"><div id="cineWho"></div><div id="cineText"></div></div>
-  <div id="cineFoot"><span id="cineReady"></span><button id="cineSkip">SKIP &#9654;</button></div>
+  <div id="cineFoot"><span id="cineReady"></span><button id="cineVoice" title="Read dialogue aloud">🔊</button><button id="cineSkip">SKIP &#9654;</button></div>
 </div>
 <div id="callBox" hidden><div id="callAva">📞</div><div><b id="callWho"></b><div id="callTxt"></div></div></div>
 <div id="objective" hidden><div id="objChap"></div><div id="objTitle"></div><div id="objText"></div><div class="jobRow"><span id="objDist"></span><span id="objTime"></span></div><div id="objTeam"></div></div>
 <div id="choice" class="screen" hidden><div class="card"><h2 id="choiceTitle"></h2><p class="sub" id="choiceText"></p><div id="choiceBtns"></div><div class="note" id="choiceNote"></div></div></div>
 <div id="hack" class="screen" hidden><div class="card"><h2 id="hackTitle">TERMINAL</h2><p class="sub" id="hackText"></p><div id="hackGrid"></div><div class="note" id="hackNote"></div><div class="rowEnd"><span id="hackTime"></span><button id="hackCancel">Abort</button></div></div></div>
 <div id="wasted" hidden><div id="wastedTxt">WASTED</div><div id="wastedSub"></div></div>
-<div id="lobby" class="screen" hidden><div class="card wide"><h2>ANDHRA UNDERWORLD &ndash; THE FOUR</h2><p class="sub" id="lobbyHint">Four friends. One king. Pick your character &ndash; every role has its own missions. Missing roles are played by AI teammates.</p>
+<div id="lobby" class="screen" hidden><div class="card wide"><h2>ANDHRA UNDERWORLD: BLOOD &amp; BETRAYAL</h2><p class="sub" id="lobbyHint">Two friends. One king. Pick Arjun or Karthik &ndash; both matter equally. Play with a friend online, or alone with an AI partner</p>
   <div id="roleGrid"></div>
   <div class="rowEnd"><label class="inl">Start at chapter <select id="lobbyCh"></select></label><span id="lobbyInfo" class="note"></span><button id="lobbyLeave">Free roam</button><button id="lobbyStart" class="big" style="width:auto;margin:0">START STORY</button></div></div></div>
 <div id="storyEnd" class="screen" hidden><div class="card"><h2 id="endTitle"></h2><p class="sub" id="endText"></p><div class="rowEnd"><button id="endClose" class="big" style="width:auto;margin:0">CONTINUE</button></div></div></div>
@@ -105,7 +105,7 @@
   <label>Volume<input id="volume" type="range" min="0" max="1" step="0.05" value="0.5"></label>
   <label>Server address (only if you cannot connect)<input id="serverUrl" type="text" placeholder="wss://your-server.onrender.com"></label><button id="serverSave">Save server &amp; reload</button>
   <label>Friends voice volume<input id="voiceVol" type="range" min="0" max="1" step="0.05" value="1"></label>
-  <div class="row2"><button id="setMic">🎤 Mic on/off</button><button id="setFs">⛶ Full screen</button></div><div class="row2"><button id="setTeam">👥 Go to friends</button><button id="setStory">📖 Story</button></div>
+  <div class="row2"><button id="setHud">🎛 Edit HUD (move / resize buttons)</button></div><div class="row2"><button id="setVoice">🔊 Dialogue voice on</button></div><div class="row2"><button id="setMic">🎤 Mic on/off</button><button id="setFs">⛶ Full screen</button></div><div class="row2"><button id="setTeam">👥 Go to friends</button><button id="setStory">📖 Story</button></div>
   <div class="row2"><button id="pauseResume" class="big">Resume</button><button id="pauseLeave">Quit to menu</button></div>
   <div class="note" id="pauseInfo"></div></div></div>
 

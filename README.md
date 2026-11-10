@@ -40,7 +40,7 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - **On foot**: E (or the ENTER button) gets you out/in. Phones get a floating **joystick** (left thumb, push fully to sprint), drag the right side to look, FIRE (auto-aim) and JUMP buttons - Free Fire / BGMI style. You can enter any parked car/bike/bus/lorry (static ones in every city + vehicles other players left). Other players see you exit, walk and enter. Exit spots avoid walls, water and other vehicles.
 - **GTA III radar & map**: rotating circular radar with black ring and N, olive/slate palette, buildings, blips (blue P = police station, yellow ! = objective, red = enemies), health bar, green Rs counter, wanted stars. Same style on the full map (M).
 - **Police**: stations on the map (real 3D, solid walls), roaming patrol cars + motorcycles, officers that stand/walk/investigate and chase on foot, wanted stars 1-5, shooting at 3+ stars, arrest -> custody -> release, police radio text. Existing chase (roadblocks, SWAT) kept.
-- **Story mode** (menu button or T): ANDHRA UNDERWORLD - THE FOUR. 4 characters (Mastermind, Driver, Hacker, Inside Man), 6 chapters, cutscenes, role-specific missions, hacking mini-game, gang fights with a boss, votes that change the story, 3 endings (good / bad / secret). Empty roles are played by AI teammates; works offline too.
+- **Story mode** (menu button or T): **ANDHRA UNDERWORLD: BLOOD & BETRAYAL** - two-player co-op (Arjun & Karthik), 6 chapters / 39 steps / 20 missions, 88 spoken lines, 3 endings that depend on your decisions (jail route, forgive or stay cold, trust Dev or not). Missions: driving, free roam, hold/hack/escape/gang fights, police chases, checkpoints, arrest + interrogation, jail escape or legal release. Dialogue is read aloud (browser speech, per-character voices; toggle with the speaker button in cutscenes or in the menu). A lone player gets an AI partner.
 - Server additions: shared parked-vehicle pool, story engine (`server/story.js`), event relay. Tests: `node tests/story-sync-test.mjs`, `node tests/v3-smoke.mjs`.
 - NOT included: voice chat, per-unit police sync to other players (each player runs their own chase; shared wanted not synced), real 3D visuals not verified in my sandbox (no three.js download).
 
@@ -61,3 +61,11 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 
 ## v3h
 - Settings has a 'Server address' box (saved on the phone) so you can fix a wrong/missing server without redeploying. If config.js still points at localhost the client falls back to wss://andhra-roamer-server.onrender.com.
+
+## v3i
+- Passengers: walk next to a friend's vehicle and press E / ENTER ('ride with <name>'). While riding you stand on the vehicle, can aim (drag) and FIRE at gang members, police cars and officers; friends see you and your shots. E again to get off.
+
+## v3j changes
+- Complete story replacement (see above). `client/src/storydata.js` is the script, `server/story.js` the shared step engine; `tests/story2-test.mjs` plays all three endings with two simulated players.
+- After jail you are put straight behind the wheel of a fuelled vehicle on the road outside the station.
+- **Edit HUD** (menu): drag any control, tap it and resize it; saved on your device.

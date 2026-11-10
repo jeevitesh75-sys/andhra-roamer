@@ -177,3 +177,13 @@ body.is-touch #wpBox{top:6px;left:50%;max-width:42vw}
 #gearBtn{position:fixed;top:8px;right:54px;z-index:60;width:40px;height:36px;padding:0;font-size:20px;background:rgba(13,27,42,.75)}
 #pause .row2{margin-top:6px}#pause .card{max-height:92vh;overflow:auto}
 #objSkip{margin-top:6px;width:100%;padding:6px;font-size:12px;background:#c0392b}
+
+/* ===== custom HUD editor ===== */
+.hud-edit #touch,.hud-edit #footBtns,.hud-edit #objective,.hud-edit #wanted,.hud-edit #enterBtn,.hud-edit #shootBtn,.hud-edit #jumpBtn{display:block!important;visibility:visible!important}
+.hud-edit #touch .tl,.hud-edit #touch .tr,.hud-edit #touch .ta,.hud-edit #touch .tm{display:flex!important}
+.hud-item{outline:2px dashed rgba(255,214,0,.9)!important;outline-offset:3px;touch-action:none!important;cursor:move;pointer-events:auto!important;z-index:60}
+.hud-sel{outline:3px solid #35e08a!important;box-shadow:0 0 14px rgba(53,224,138,.7)}
+#hudBar{position:fixed;left:50%;top:6px;transform:translateX(-50%);z-index:100;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:96vw;background:rgba(8,14,26,.94);border:1px solid #35e08a;border-radius:14px;padding:6px 10px;font:600 12px system-ui;color:#fff}
+#hudBar button{padding:7px 12px;border-radius:10px;border:0;background:#26324a;color:#fff;font-weight:700}
+#hudBar #hudDone{background:#1e9d5a}
+#hudBar input{width:140px}

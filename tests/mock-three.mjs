@@ -43,7 +43,7 @@ export function makeMockThree() {
   const THREE = new Proxy({}, {
     get(_t, k) {
       if (typeof k === 'symbol') return undefined;
-      if (/^[A-Z]/.test(k) && /Geometry|Mesh|Material|Light|Group|Scene|Camera|Object3D|Color|Vector|Texture|Sprite|Shape|Attribute|Renderer|Fog|Matrix|Euler|Quaternion|Generator|Helper|Raycaster|Clock|Float|Plane|Box|Cylinder|Sphere|Ring|Torus/.test(k)) return mk(k);
+      if (/^[A-Z]/.test(k) && /Line|Geometry|Mesh|Material|Light|Group|Scene|Camera|Object3D|Color|Vector|Texture|Sprite|Shape|Attribute|Renderer|Fog|Matrix|Euler|Quaternion|Generator|Helper|Raycaster|Clock|Float|Plane|Box|Cylinder|Sphere|Ring|Torus/.test(k)) return mk(k);
       return 0; // enums / constants (SRGBColorSpace, DoubleSide, ...)
     },
   });

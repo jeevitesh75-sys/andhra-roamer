@@ -8,6 +8,7 @@ import { Net, FLAG } from './net.js';
 import { MapView } from './map2d.js';
 import { generateOffers, JobRunner, FUEL_PRICE, rankFor } from './jobs.js';
 import { AudioFX } from './audio.js';
+import { HudEditor } from './hudedit.js';
 import { Characters } from './characters.js';
 import { ParkedLot, distToVehicle } from './parked.js';
 import { Law } from './law.js';
@@ -222,7 +223,11 @@ function readInput(dt) {
 }
 
 /* ------------------------------------------------------------ HUD / UI */
+function syncVoiceBtn() { const on = G.storyC.tts.on; for (const id of ['cineVoice', 'setVoice']) { const b = $(id); if (b) b.textContent = (on ? '🔊' : '🔇') + (id === 'setVoice' ? ' Dialogue voice ' + (on ? 'on' : 'off') : ''); } }
 function initHud() {
+  if (!G.hud) { G.hud = new HudEditor(G, toast); setTimeout(() => G.hud.applyAll(), 300); }
+  if ($('setHud')) $('setHud').onclick = () => { togglePause(false); G.hud.start(); };
+  for (const id of ['cineVoice', 'setVoice']) { const b = $(id); if (b) b.onclick = () => { G.storyC.tts.toggle(); syncVoiceBtn(); }; } syncVoiceBtn();
   $('jobCancel').onclick = cancelJob; $('boardClose').onclick = toggleBoard; $('garClose').onclick = toggleGarage; $('mapClose').onclick = toggleMap;
   $('wpClear').onclick = () => setWaypoint(null);
   $('boardRefresh').onclick = () => { G.offerSeed++; renderBoard(); };
@@ -440,6 +445,17 @@ function respawnAt(st) {
   if (!G.foot) exitVehicle(true); G.foot.anim = null; G.foot.x = sp.x; G.foot.z = sp.z; G.foot.y = G.world.heightAt(sp.x, sp.z); G.camInit = false; toast(fine ? `Hospital bill Rs ${fine}` : 'Back on your feet', 2500); returnVehicle();
 }
 /** after jail / hospital: your vehicle is brought to the station road and you get in automatically */
+/** after jail: no hunting for the car - the player is put behind the wheel of a fuelled vehicle on the nearest road */
+function giveVehicleAfterJail() {
+  const w = G.world, v = G.veh, f = G.foot || G.veh, st = G.arrest && G.arrest.st, ax = st && st.door ? st.door.x : f.x, az = st && st.door ? st.door.z : f.z;
+  const sn = w.snapToRoad(ax, az, 250, 4); let x = ax + 6, z = az, h = f.h || 0;
+  if (sn) { const p = w.roadPoint(sn.road, sn.s, Math.min(2.4, sn.road.halfW * 0.5), {}); x = p.x; z = p.z; h = p.h; }
+  if (G.myPark && String(G.myPark).startsWith('me~')) { G.lot.dyn.delete(G.myPark); G.myPark = null; }
+  if (G.ride) endRide();
+  v.reset(x, z, h); v.fuel = v.spec.tank; G.vcolor = G.vcolor || '#d63b2f';
+  G.foot = null; G.scene.setFoot && G.scene.setFoot(null); G.chars.remove('me'); G.camYaw = h; G.orbit = 0; G.camInit = false; setFootMode(false);
+  G.scene.updateChunks(x, z, 60); G.joy && G.joy.release(); toast('A vehicle is waiting for you outside the station', 3500);
+}
 function returnVehicle() {
   const f = G.foot; if (!f || G.ride) return; const w = G.world, v = G.veh, sn = w.snapToRoad(f.x, f.z, 90, 4);
   let x = f.x + 5, z = f.z, h = f.h; if (sn) { const p = w.roadPoint(sn.road, sn.s, 0, {}); x = p.x; z = p.z; h = p.h; }
@@ -464,7 +480,7 @@ function startArrest(why) {
 function arrestStep(dt) {
   const a = G.arrest; if (!a) return; a.t += dt;
   if (a.stage === 'busted' && a.t > 2.5) { a.stage = 'jail'; a.t = 0; G.money -= a.fine; const st = a.st; if (!G.foot) exitVehicle(true); if (st) { G.foot.anim = null; G.foot.x = st.door.x; G.foot.z = st.door.z; G.foot.y = G.world.heightAt(st.door.x, st.door.z); } G.camInit = false; $('wastedTxt').textContent = 'IN CUSTODY'; }
-  if (a.stage === 'jail') { $('wastedSub').textContent = `Questioned by the police... released in ${Math.max(0, Math.ceil(a.time - a.t))}s (fine Rs ${a.fine})`; if (a.t > a.time) { G.arrest = null; $('wasted').hidden = true; toast('Released. Stay out of trouble.', 2500); returnVehicle(); } }
+  if (a.stage === 'jail') { $('wastedSub').textContent = `Questioned by the police... released in ${Math.max(0, Math.ceil(a.time - a.t))}s (fine Rs ${a.fine})`; if (a.t > a.time) { G.arrest = null; $('wasted').hidden = true; toast('Released. Stay out of trouble.', 2500); giveVehicleAfterJail(); } }
 }
 function policeBump(v) {
   if (!G.police.active) return;
@@ -559,7 +575,7 @@ function updateRemotes() {
     const s = net.sample(r, G.tmp.rs || (G.tmp.rs = {})); if (!s) continue;
     const spec = SPECS[r.veh] || SPECS.car, hl = spec.wheelbase / 2, sn = Math.sin(s.h), cs = Math.cos(s.h);
     const fy = w.heightAt(s.x + sn * hl, s.z + cs * hl), by = w.heightAt(s.x - sn * hl, s.z - cs * hl);
-    if (s.f & FLAG.FOOT) { sc.removeModel('r' + id); r.ph = (r.ph || 0) + 0.1 * (1 + Math.abs(s.v)); const cm = G.storyC && G.storyC.cine; const rl = G.net.story && G.net.story.roles && G.net.story.roles[id], R = rl && ROLES[rl]; G.chars.set('r' + id, { x: s.x, y: w.heightAt(s.x, s.z), z: s.z, h: s.h, phase: r.ph, moving: Math.min(1.3, Math.abs(s.v) / 4.8), color: R ? R.shirt : r.color, pants: R ? R.pants : '#2c3e50', crouch: (s.f & 256) ? 0.6 : 0, gun: !!(s.f & 512), aim: !!(s.f & 512), flash: !!(s.f & FLAG.GUN), air: !!(s.f & FLAG.AIR), vis: !cm && !(s.f & FLAG.PASS) }); updateTag(id, r, s, w.heightAt(s.x, s.z) + 2.2, Math.hypot(s.x - me.x, s.z - me.z)); continue; }
+    if (s.f & FLAG.FOOT) { sc.removeModel('r' + id); r.ph = (r.ph || 0) + 0.1 * (1 + Math.abs(s.v)); const cm = G.storyC && G.storyC.cine; const rl = G.net.story && G.net.story.roles && G.net.story.roles[id], R = rl && ROLES[rl]; G.chars.set('r' + id, { x: s.x, y: w.heightAt(s.x, s.z) + ((s.f & FLAG.PASS) ? 1.0 : 0), z: s.z, h: s.h, phase: r.ph, moving: (s.f & FLAG.PASS) ? 0 : Math.min(1.3, Math.abs(s.v) / 4.8), color: R ? R.shirt : r.color, pants: R ? R.pants : '#2c3e50', crouch: (s.f & 256) ? 0.6 : 0, gun: !!(s.f & 512), aim: !!(s.f & 512), flash: !!(s.f & FLAG.GUN), air: !!(s.f & FLAG.AIR), vis: !cm }); updateTag(id, r, s, w.heightAt(s.x, s.z) + 2.2, Math.hypot(s.x - me.x, s.z - me.z)); continue; }
     G.chars.remove('r' + id);
     const m = sc.model('r' + id, r.veh, r.color);
     sc.placeModel(m, { x: s.x, z: s.z, y: (fy + by) / 2, h: s.h, pitch: Math.atan((fy - by) / spec.wheelbase), roll: 0, steer: s.st * spec.maxSteer, brake: s.f & FLAG.BRAKE, lights: s.f & FLAG.LIGHTS, reverse: s.f & FLAG.REVERSE, signed: s.v });
@@ -649,11 +665,11 @@ let radioTimer = 0, callTimer = 0;
 function showRadio(text) { const r = $('radio'); $('radioTxt').textContent = text; r.hidden = false; clearTimeout(radioTimer); radioTimer = setTimeout(() => { r.hidden = true; }, 6000); G.audio.chime && G.audio.chime(); }
 const H = {
   toast: (m, ms) => toast(m, ms),
-  radio: text => { if (text) { G.law.radio(text); } },
-  call: (who, text) => { const N = NPCS[who] || ROLES[who] || { name: who, emoji: '📞' }; $('callBox').hidden = false; $('callAva').textContent = N.emoji || '📞'; $('callWho').textContent = N.name || who; $('callTxt').textContent = text; clearTimeout(callTimer); callTimer = setTimeout(() => { $('callBox').hidden = true; }, 7000); },
+  radio: text => { if (text) { G.law.radio(text); if (G.storyC && !G.storyC.cine && !G.storyC.tts.busy) G.storyC.tts.say(text, 'radio'); } },
+  call: (who, text) => { if (G.storyC) G.storyC.tts.say(text, who); const N = NPCS[who] || ROLES[who] || { name: who, emoji: '📞' }; $('callBox').hidden = false; $('callAva').textContent = N.emoji || '📞'; $('callWho').textContent = N.name || who; $('callTxt').textContent = text; clearTimeout(callTimer); callTimer = setTimeout(() => { $('callBox').hidden = true; }, 7000); },
   startStory: async () => { if (!G.running) { await startGame(); } G.storyC.openLobby(); },
   stageTeam: A => {   // regroup everyone around the cutscene location
-    const roles = G.net && G.net.story ? G.net.story.roles : {}, myRole = G.storyC.myRole, i = Math.max(0, ['mastermind', 'driver', 'hacker', 'insider'].indexOf(myRole));
+    const roles = G.net && G.net.story ? G.net.story.roles : {}, myRole = G.storyC.myRole, i = Math.max(0, ['arjun', 'karthik'].indexOf(myRole));
     const P = G.foot || G.veh; if (Math.hypot(P.x - A.x, P.z - A.z) > 60) { if (!G.foot) exitVehicle(true); const a = i * 1.57, x = A.x + Math.cos(a) * 3, z = A.z + Math.sin(a) * 3; G.foot.anim = null; G.foot.x = x; G.foot.z = z; G.foot.y = G.world.heightAt(x, z); G.veh.x = x + 4; G.veh.z = z + 4; G.lot.dyn.forEach(e => { if (e.id === G.myPark) { e.x = x + 5; e.z = z + 5; } }); G.camInit = false; }
     else if (!G.foot) exitVehicle(true);
     G.scene.updateChunks(A.x, A.z, 60); G.joy && G.joy.release();
@@ -732,10 +748,11 @@ function startRide(c) { G.ride = { id: c.id }; G.foot.moving = 0; toast('Riding 
 function rideStep(dt) {
   const f = G.foot, r = G.net && G.net.remotes.get(G.ride.id), s = r && G.net.sample(r, G.tmp.ride || (G.tmp.ride = {}));
   if (!s || (r.snaps[r.snaps.length - 1].f & FLAG.FOOT)) { endRide(); return; }
-  f.x = s.x; f.z = s.z; f.y = G.world.heightAt(s.x, s.z) + 0.8; f.h = s.h; f.moving = 0; f.speed = 0; G.camYaw = lerpAngle(G.camYaw, s.h, 1 - Math.exp(-3 * dt));
+  f.x = s.x; f.z = s.z; f.y = G.world.heightAt(s.x, s.z) + 1.0; if (!(f.shotT > 0)) f.h = s.h; f.moving = 0; f.speed = 0; G.camYaw = lerpAngle(G.camYaw, s.h, 1 - Math.exp(-3 * dt));
+  footShoot(dt, footInput());   // passengers can shoot enemies, gang members and police cars from the seat
 }
 function endRide() { if (!G.ride) return; const f = G.foot; f.x += Math.cos(f.h) * 2.6; f.z -= Math.sin(f.h) * 2.6; f.y = G.world.heightAt(f.x, f.z); G.ride = null; toast('Got off', 1200); }
-const AI_ORDER = ['mastermind', 'driver', 'hacker', 'insider'];
+const AI_ORDER = ['arjun', 'karthik'];
 function updateAI(dt) {
   // AI teammates for roles no human plays. ONE shared set per room: the host simulates them and relays; every AI follows ONE human
   // (round-robin), so with 2 players + 2 AI each player gets their own companion and nobody sees duplicates.

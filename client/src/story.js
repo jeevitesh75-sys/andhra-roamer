@@ -1,6 +1,7 @@
-// ANDHRA UNDERWORLD - THE FOUR: client story engine (lobby, objectives, cutscenes, votes, hack mini-game, gang fights).
+// ANDHRA UNDERWORLD: BLOOD & BETRAYAL - client story engine (lobby, objectives, cutscenes, votes, hack mini-game, gang fights).
 // Works online (server decides when steps advance) and offline (LocalStory mirrors the server rules for solo play).
-import { CHAPTERS, ROLES, NPCS, ROLE_ORDER, ANCHORS, QUESTIONS, RADIO_CHATTER, THUG_LOOK, stepById } from './storydata.js';
+import { CHAPTERS, ROLES, NPCS, ROLE_ORDER, ANCHORS, QUESTIONS, RADIO_CHATTER, THUG_LOOK, stepById, variantKey, optionOpen } from './storydata.js';
+import { Speech } from './tts.js';
 import { mulberry32, strHash } from './noise.js';
 
 const $ = id => document.getElementById(id);
@@ -12,18 +13,18 @@ class LocalStory {
   constructor(onPush) { this.push = onPush; this.s = { on: false, ended: false, ch: 0, step: 0, id: '', t: 0, rev: 0, host: 1, roles: {}, done: [], ready: [], votes: {}, choices: {}, ending: null, names: { 1: 'You' }, chapters: CHAPTERS.map(c => ({ id: c.id, name: c.name, n: c.steps.length })) }; }
   emit() { this.s.rev++; this.push(JSON.parse(JSON.stringify(this.s))); }
   role(r) { this.s.roles = r && r !== 'none' ? { 1: r } : {}; this.emit(); }
-  start(ch = 1) { if (!this.s.roles[1]) this.s.roles[1] = 'mastermind'; this.s.choices = ch > 1 ? { c4_choice: 'protect' } : {}; this.s.on = true; this.s.ended = false; this.enter(ch, 0); }
+  start(ch = 1) { if (!this.s.roles[1]) this.s.roles[1] = 'arjun'; this.s.choices = ch > 1 ? { c4_choice: 'cold', c3_choice: 'lawyer', c5_choice: 'trustDev' } : {}; this.s.on = true; this.s.ended = false; this.enter(ch, 0); }
   enter(ch, i) { const c = CHAPTERS[ch - 1], st = c && c.steps[i]; if (!st) { this.s.on = false; this.s.ended = true; return this.emit(); } Object.assign(this.s, { ch, step: i, id: st.id, t: Date.now(), done: [], ready: [], votes: {} }); this.emit(); }
   next() { const c = CHAPTERS[this.s.ch - 1]; if (this.s.step + 1 < c.steps.length) this.enter(this.s.ch, this.s.step + 1); else if (this.s.ch < CHAPTERS.length) this.enter(this.s.ch + 1, 0); else { this.s.on = false; this.s.ended = true; this.emit(); } }
   done(id) { if (id === this.s.id && NEED[id].need === 'all') this.next(); }
   ready(id) { if (id === this.s.id && NEED[id].need === 'cut') this.next(); }
-  vote(id, v) { if (id !== this.s.id || NEED[id].need !== 'vote') return; if (v === 'secret' && this.s.choices.c4_choice !== 'protect') return; this.s.choices[id] = v; if (id === 'c6_final') this.s.ending = v; this.next(); }
+  vote(id, v) { if (id !== this.s.id || NEED[id].need !== 'vote') return; if (!optionOpen(v, this.s.choices)) return; this.s.choices[id] = v; if (id === 'c6_final') this.s.ending = v; this.next(); }
   stop() { this.s.on = false; this.emit(); }
 }
 
 export class StoryClient {
   constructor(G, H) {
-    this.G = G; this.H = H; this.s = null; this.curId = ''; this.list = []; this.idx = 0; this.cine = null; this.anch = {}; this.gang = []; this.gangFor = ''; this.sentDone = ''; this.sentReady = ''; this.localQ = {}; this.hack = null; this.chatterT = 12;
+    this.G = G; this.H = H; this.s = null; this.curId = ''; this.list = []; this.idx = 0; this.cine = null; this.anch = {}; this.gang = []; this.gangFor = ''; this.sentDone = ''; this.sentReady = ''; this.localQ = {}; this.hack = null; this.chatterT = 12; this.tts = new Speech();
     this.local = new LocalStory(s => this.onState(s));
     $('storyBtn').onclick = () => H.startStory();
     $('lobbyLeave').onclick = () => { $('lobby').hidden = true; H.closeStoryLobby && H.closeStoryLobby(); };
@@ -73,7 +74,7 @@ export class StoryClient {
       grid.appendChild(b);
     }
     const n = Object.keys(s.roles || {}).length;
-    $('lobbyInfo').textContent = `${n}/4 characters played by humans. ${n < 4 ? 'Empty roles are played by AI teammates.' : 'Full team!'}`;
+    $('lobbyInfo').textContent = `${n}/2 characters played by humans. ${n < 2 ? 'The empty character is played by an AI partner.' : 'Both friends are here!'}`;
     $('lobbyStart').disabled = !this.isHost; $('lobbyStart').textContent = this.isHost ? 'START STORY' : 'WAITING FOR HOST';
   }
   onState(s) {
@@ -92,7 +93,7 @@ export class StoryClient {
     G.checkpointRun = false;
     if (def.step.need === 'cut') return this.startCine(s, def.step);
     if (def.step.need === 'vote') return this.showVote(s, def.step);
-    const step = def.step.variants ? def.step.variants[s.ending || 'good'] : def.step, role = this.myRole || 'mastermind', o = (step.obj || def.step.obj)[role] || (step.obj || def.step.obj).default;
+    const step = def.step.variants ? def.step.variants[variantKey(def.step, s)] : def.step, role = this.myRole || 'arjun', o = (step.obj || def.step.obj)[role] || (step.obj || def.step.obj).default;
     this.list = (Array.isArray(o) ? o : [o]).map(x => ({ ...x })); this.title = def.step.title; this.chap = def.chapter;
     for (const c of step.intro || []) H.call(c.who, c.text);
     H.toast(`${def.chapter.name}: ${def.step.title}`, 3000);
@@ -131,7 +132,7 @@ export class StoryClient {
     box.hidden = false; const o = this.cur(); $('objChap').textContent = `CHAPTER ${s.ch} - ${(CHAPTERS[s.ch - 1] || {}).name}`; $('objTitle').textContent = this.def.title;
     let txt = o ? o.text : 'Your part is done!';
     if (!o) {
-      const role0 = this.myRole || 'mastermind', obj = (this.def.variants ? this.def.variants[s.ending || 'good'] : this.def).obj || this.def.obj, pend = Object.entries(s.roles || {}).filter(([id]) => !s.done.includes(Number(id)));
+      const role0 = this.myRole || 'arjun', obj = (this.def.variants ? this.def.variants[variantKey(this.def, s)] : this.def).obj || this.def.obj, pend = Object.entries(s.roles || {}).filter(([id]) => !s.done.includes(Number(id)));
       if (pend.length) { txt = 'Your part is done. Waiting for: ' + pend.map(([id, r]) => { const L = obj[r] || obj.default, last = Array.isArray(L) ? L[L.length - 1] : L; return `${ROLES[r].emoji} ${(s.names && s.names[id]) || ROLES[r].short} (${ROLES[r].short}) - ${last ? last.text : 'finishing up'}`; }).join(' | ') + '. Go and help them!'; }
       else txt = 'Your part is done. Waiting for the next scene...';
       let b = $('objSkip'); if (!b) { b = document.createElement('button'); b.id = 'objSkip'; b.textContent = 'CONTINUE WITHOUT THEM'; b.onclick = () => { if (this.online) this.net.sendStory('sskip', {}); else this.local.done(this.curId); b.hidden = true; }; $('objective').appendChild(b); }
@@ -139,7 +140,7 @@ export class StoryClient {
     } else { const b = $('objSkip'); if (b) b.hidden = true; }
     $('objText').textContent = txt;
     const names = Object.entries(s.roles || {}).map(([id, r]) => `${ROLES[r].emoji} ${ROLES[r].short} ${s.done.includes(Number(id)) ? '<span class="done">done</span>' : '...'}`);
-    $('objTeam').innerHTML = names.join(' &nbsp; ') + (Object.keys(s.roles || {}).length < 4 ? ' &nbsp; (AI teammates cover the rest)' : '');
+    $('objTeam').innerHTML = names.join(' &nbsp; ') + (Object.keys(s.roles || {}).length < 2 ? ' &nbsp; (an AI partner covers the other friend)' : '');
   }
   hud() {
     const o = this.cur(), P = this.playerPos(), mk = $('objMark'); if (!o || !o.at || !P || this.cine || !this.active) { $('objDist').textContent = ''; mk.hidden = true; return; }
@@ -157,23 +158,23 @@ export class StoryClient {
   }
   showVote(s, step) {
     $('choice').hidden = false; $('choiceTitle').textContent = step.title; $('choiceText').textContent = step.text; const box = $('choiceBtns'); box.innerHTML = '';
-    for (const op of step.options) { if (op.secret && !(s.choices && s.choices.c4_choice === 'protect')) continue; const b = document.createElement('button'); b.innerHTML = `${esc(op.label)}<small>${esc(op.desc)}</small>`; b.onclick = () => { [...box.children].forEach(k => k.classList.remove('sel')); b.classList.add('sel'); $('choiceNote').textContent = 'Vote sent. Waiting for the team...'; if (this.online) this.net.sendStory('svote', { id: s.id, val: op.id }); else this.local.vote(s.id, op.id); }; box.appendChild(b); }
-    $('choiceNote').textContent = 'Everyone votes. Majority wins; ties go to the Mastermind.';
+    for (const op of step.options) { if (op.secret && !optionOpen(op.id, (s.choices || {}))) continue; const b = document.createElement('button'); b.innerHTML = `${esc(op.label)}<small>${esc(op.desc)}</small>`; b.onclick = () => { [...box.children].forEach(k => k.classList.remove('sel')); b.classList.add('sel'); $('choiceNote').textContent = 'Vote sent. Waiting for the team...'; if (this.online) this.net.sendStory('svote', { id: s.id, val: op.id }); else this.local.vote(s.id, op.id); }; box.appendChild(b); }
+    $('choiceNote').textContent = 'Everyone votes. Majority wins; if you disagree, Arjun decides.';
   }
   showEnd(s) {
-    const E = { good: ['GOOD ENDING - JUSTICE', 'The four friends helped the police expose the criminal organization.'], bad: ['BAD ENDING - THE NEW KINGS', 'The four friends became the new leaders of the underground.'], secret: ['SECRET ENDING - THE TRUTH', "One betrayal was revealed, and everyone's fate changed."] }[s.ending || 'good'];
+    const E = { friendship: ['ENDING 1 - FRIENDSHIP', 'Arjun and Karthik exposed The King and his organization. Both survived and began a new life.'], underworld: ['ENDING 3 - UNDERWORLD', 'The two friends took control of the criminal organization and became the most powerful figures in the Andhra underworld.'], betrayal: ['ENDING 2 - BETRAYAL', "Arjun discovered Karthik's final secret. Their friendship ended in a dramatic confrontation."] }[s.ending || 'friendship'];
     $('storyEnd').hidden = false; $('endTitle').textContent = 'THE END - ' + E[0]; $('endText').textContent = E[1];
   }
 
   /* ------------------------------------------------ cutscenes */
   startCine(s, step) {
-    const G = this.G, spec = step.endings ? step.endings[s.ending || 'good'] : step, A = this.anchor(spec.at || step.at), shots = spec.shots;
+    const G = this.G, spec = step.endings ? step.endings[variantKey(step, s)] : step, A = this.anchor(spec.at || step.at), shots = spec.shots;
     this.cine = { t: 0, shot: 0, shots, A, T: 0, step, shotT: 0 }; this.H.stageTeam(A); $('cine').hidden = false; requestAnimationFrame(() => $('cine').classList.add('on'));
     const ch = step.title.startsWith('Chapter') ? step.title : ''; $('cineTitle').innerHTML = ch ? `<small>${esc(ch.split(' - ')[0])}</small>${esc(ch.split(' - ')[1] || '')}` : ''; $('cineTitle').classList.toggle('on', !!ch); setTimeout(() => $('cineTitle').classList.remove('on'), 4200);
     this.setShot(0);
   }
   setShot(i) {
-    const c = this.cine, sh = c.shots[i]; c.shot = i; c.shotT = 0; const who = NPCS[sh.who] || ROLES[sh.who] || { name: '', color: '#fff' }; $('cineWho').textContent = (who.emoji || '') + ' ' + (who.name || ''); $('cineWho').style.color = who.color || '#fff'; $('cineText').textContent = sh.text || '';
+    const c = this.cine, sh = c.shots[i]; c.shot = i; c.shotT = 0; const who = NPCS[sh.who] || ROLES[sh.who] || { name: '', color: '#fff' }; $('cineWho').textContent = (who.emoji || '') + ' ' + (who.name || ''); $('cineWho').style.color = who.color || '#fff'; $('cineText').textContent = sh.text || ''; c.spoke = false; c.speechDone = !this.tts.say(sh.text, sh.who, () => { c.speechDone = true; }) || !sh.text;
   }
   updateCine(dt) {
     const c = this.cine, sh = c.shots[c.shot], cam = this.G.scene.camera, A = c.A; c.shotT += dt; c.T += dt;
@@ -182,10 +183,10 @@ export class StoryClient {
     else if (sh.cam[0] === 'fly') { const f = sh.cam[1], t = sh.cam[2], e = k * k * (3 - 2 * k); px = A.x + f[0] + (t[0] - f[0]) * e; py = y + f[1] + (t[1] - f[1]) * e; pz = A.z + f[2] + (t[2] - f[2]) * e; }
     else { px = A.x + sh.cam[1][0]; py = y + sh.cam[1][1]; pz = A.z + sh.cam[1][2]; }
     cam.position.set(px, py, pz); cam.lookAt(A.x + L[0], y + L[1], A.z + L[2]); this.cine.shotActors = sh;
-    if (c.shotT >= sh.dur) { if (c.shot + 1 < c.shots.length) this.setShot(c.shot + 1); else this.endCine(false); }
+    if (c.shotT >= sh.dur && (c.speechDone || c.shotT > sh.dur + 14)) { if (c.shot + 1 < c.shots.length) this.setShot(c.shot + 1); else this.endCine(false); }
   }
   endCine() {
-    if (!this.cine) return; this.cine = null; $('cine').classList.remove('on'); setTimeout(() => { if (!this.cine) $('cine').hidden = true; }, 800); $('cineTitle').classList.remove('on');
+    if (!this.cine) return; this.tts.stop(); this.cine = null; $('cine').classList.remove('on'); setTimeout(() => { if (!this.cine) $('cine').hidden = true; }, 800); $('cineTitle').classList.remove('on');
     if (this.sentReady !== this.curId) { this.sentReady = this.curId; if (this.online) this.net.sendStory('sready', { id: this.curId }); else this.local.ready(this.curId); }
     $('cineReady').textContent = this.online ? 'Waiting for the team...' : '';
   }
