@@ -28,5 +28,7 @@ for (const c of SITES) { assert(FILES[c.file], 'site file key ' + c.key); const 
 // SWAT rig has the clips the character code needs, and the rifle is a plain mesh
 { const g = read(FILES.swat), names = (g.j.animations || []).map(a => a.name.split('|').pop()); for (const n of ['Idle', 'Walk', 'Run', 'Death', 'Idle_Gun_Pointing']) assert(names.includes(n), 'swat clip ' + n);
   const bones = g.j.nodes.map(n => n.name); assert(bones.includes('LowerArm.R'), 'swat LowerArm.R bone'); console.log('ok   swat rig, clips:', names.length); }
+{ const g = read(FILES.man), n = g.j.nodes.map(x => x.name); for (const b of ['mixamorig:Head', 'mixamorig:HeadTop_End', 'mixamorig:RightHand', 'mixamorig:Hips']) assert(n.includes(b), 'man bone ' + b); assert(g.j.skins.length === 1 && g.j.animations.length === 1, 'man skin + walk clip'); console.log('ok   man rig (Mixamo)'); }
+for (const f of ['hatCowboy', 'hatTop']) assert(read(FILES[f]).j.meshes.length > 0, f);
 assert(read(FILES.rifle).j.meshes.length > 0); console.log('ok   rifle');
 console.log('GLB ASSET TESTS PASSED');

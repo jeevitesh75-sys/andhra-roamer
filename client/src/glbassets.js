@@ -12,6 +12,7 @@ export const FILES = {
   bikeA: 'bike_cruiser.glb', bikeB: 'bike_sport.glb', char: 'character.glb', pistol: 'pistol.glb', tree: 'tree.glb',
   swat: 'swat.glb', rifle: 'rifle.glb', club: 'club.glb', garage: 'garage.glb', tavern: 'tavern.glb', gas: 'gas_station.glb',
   bridgeA: 'bridge_a.glb', bridgeB: 'bridge_b.glb', phone: 'phone.glb',
+  man: 'man.glb', hatCowboy: 'hat_cowboy.glb', hatTop: 'hat_top.glb',
 };
 
 /** static story-site models. size = target length (m) of the chosen dimension (dim 'xz' = longest ground side, 'all' = longest side overall).
@@ -163,6 +164,15 @@ function buildSite(T, gltf, cfg) {
   out.userData.size = { x: sz.x * k, y: sz.y * k, z: sz.z * k }; return out;
 }
 
+/** hat normalised to width 1 (longest ground side), centred, brim-base at y=0 - the rig scales it to the head */
+function buildHat(T, gltf) {
+  const sc = gltf.scene; sc.updateMatrixWorld(true); const b = new T.Box3().setFromObject(sc), sz = b.getSize(new T.Vector3()), c = b.getCenter(new T.Vector3()), w = Math.max(sz.x, sz.z); if (!(w > 0)) throw new Error('empty hat');
+  const k = 1 / w, inner = new T.Group(), out = new T.Group(); inner.add(sc); inner.scale.setScalar(k); inner.position.set(-c.x * k, -b.min.y * k, -c.z * k); out.add(inner);
+  out.traverse(o => { if (o.isMesh) o.castShadow = true; }); out.userData.h = sz.y * k; return out;
+}
+/** find a node by name whatever way three sanitised it (it strips . : [ ] / from glTF node names) */
+export function findNode(root, ...names) { for (const n of names) { const o = root.getObjectByName(n) || root.getObjectByName(n.replace(/[.:\[\]/]/g, '')); if (o) return o; } return null; }
+
 function buildPistol(T, gltf) {
   const inner = gltf.scene; inner.position.set(0, 1.1, -1.4);
   const w = new T.Group(); w.add(inner); w.rotation.y = Math.PI; w.scale.setScalar(0.26 / 4.1);
@@ -197,6 +207,16 @@ export async function loadAssets(T, onProgress = () => {}) {
     catch (e) { console.warn('swat setup failed', e); }
   }
   if (gl.rifle) { try { A.rifle = buildRifle(T, gl.rifle); } catch (e) { console.warn('rifle setup failed', e); } }
+  if (gl.man) {
+    try {
+      const sc = gl.man.scene; sc.updateMatrixWorld(true); const b = new T.Box3().setFromObject(sc), h = b.max.y - b.min.y; if (!(h > 0)) throw new Error('bad height');
+      // the Mixamo clip is a walk cycle that travels forward: drop the hips position track so he walks on the spot
+      const anims = gl.man.animations.map(c => { const n = c.clone(); n.tracks = n.tracks.filter(t => !/Hips\.position$/.test(t.name)); return n; });
+      A.man = { scene: sc, anims, scale: CHAR_HEIGHT * 1.02 / h, footY: -b.min.y * CHAR_HEIGHT * 1.02 / h };
+    } catch (e) { console.warn('man setup failed', e); }
+  }
+  A.hats = {};
+  for (const [k, f] of [['cowboy', 'hatCowboy'], ['top', 'hatTop']]) if (gl[f]) { try { A.hats[k] = buildHat(T, gl[f]); } catch (e) { console.warn('hat setup failed', k, e); } }
   A.sites = {};
   for (const cfg of SITES) { const g = gl[cfg.file]; if (!g) continue; try { A.sites[cfg.key] = buildSite(T, g, cfg); } catch (e) { console.warn('site setup failed', cfg.key, e); A.notes.push('site ' + cfg.key); } }
   A.ok = !!(Object.keys(A.veh).length || A.char || A.treeGeo);

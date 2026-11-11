@@ -1,3 +1,4 @@
+import { findNode } from './glbassets.js';
 // Humanoid character rigs (box people) used for: your own character on foot, other players on foot, police officers, gang members.
 // One Characters instance manages any number of keyed rigs inside the three.js scene. Pure presentation, no game logic.
 export const CHAR_TOP = 1.7; // y of the top of the head on the glTF person (metres)
@@ -13,7 +14,7 @@ export class Characters {
   /** rigged, animated glTF person (Quaternius). Returns null if the model is not available so the box rig is used. */
   _makeGlb(p) {
     const A = this.assets, T = this.T; if (!A || !A.char || !A.SkeletonUtils) return null;
-    const src = p.swat && A.swat ? A.swat : A.char, isSwat = src === A.swat;
+    const src = p.man && A.man ? A.man : p.swat && A.swat ? A.swat : A.char, isSwat = src === A.swat, isMan = src === A.man;
     const model = A.SkeletonUtils.clone(src.scene), g = new T.Group(), body = new T.Group(), k = src.scale; g.add(body); body.add(model); model.scale.setScalar(k);
     const mats = [], cache = new Map(), col = c => new T.Color(c);
     const tint = { Shirt: p.color || '#2980b9', UnderShirt: new T.Color(p.color || '#2980b9').multiplyScalar(0.8), Pants: p.pants || '#2c3e50' }; if (p.skin) tint.Skin = p.skin;
@@ -25,19 +26,30 @@ export class Characters {
     });
     const mixer = new T.AnimationMixer(model), actions = {};
     for (const clip of src.anims) { const n = clip.name.includes('|') ? clip.name.split('|').pop() : clip.name; if (!actions[n]) actions[n] = mixer.clipAction(clip); }
+    if (isMan) { const w = Object.values(actions)[0]; if (w) { actions.Walk = actions.Run = actions.Idle = w; } }
     if (isSwat) { actions.Attacking_Idle = actions.Idle_Gun_Pointing || actions.Idle_Gun || actions.Attacking_Idle; }
     const gunSrc = (p.swat || p.rifle) && A.rifle ? A.rifle : A.pistol, rifle = gunSrc === A.rifle, gun = gunSrc ? gunSrc.clone(true) : null, flash = new T.Mesh(this.geo.flash, new T.MeshBasicMaterial({ color: 0xffd24a })); flash.visible = false;
     if (gun) { flash.position.set(0, rifle ? 0.05 : 0.04, rifle ? 0.55 : 0.22); flash.scale.setScalar(0.7); gun.add(flash); gun.visible = false; g.add(gun); }
-    const hand = model.getObjectByName('Fist.R') || model.getObjectByName('LowerArm.R');
+    const hand = findNode(model, 'Fist.R', 'mixamorig:RightHand', 'LowerArm.R');
     const hatMesh = (geo, c, x, y, z, sc) => { const o = new T.Mesh(geo, this._mat(c)); o.position.set(x, y, z); o.scale.setScalar(sc || 1); o.castShadow = true; body.add(o); return o; };
     const G = this.geo, hy = CHAR_TOP;
-    if (isSwat) { /* the SWAT model already wears its helmet and visor */ }
+    if (isMan) this._manHat(model, p);
+    else if (isSwat) { /* the SWAT model already wears its helmet and visor */ }
     else if (p.hat === 'cap') { hatMesh(G.cap, p.hatColor || '#1d2f63', 0, hy + 0.02, 0, 1.45); hatMesh(G.brim, '#111', 0, hy - 0.03, 0.27, 1.7); }
     else if (p.hat === 'helmet') { const h = hatMesh(G.cap, '#f5f5f5', 0, hy - 0.02, 0, 1.7); h.scale.set(1.9, 2.4, 1.9); }
     else if (p.hat === 'bandana') hatMesh(G.hat, '#b0171f', 0, hy - 0.06, 0, 1.45);
     else if (p.hat === 'crown') hatMesh(G.cap, '#d4af37', 0, hy + 0.04, 0, 1.1);
     this.scene.add(g);
-    return { g, body, model, k, mixer, actions, cur: null, glb: true, mats, gun: gun || { visible: false }, hasGun: !!gun, hand, flash, flashT: 0, key: '', last: p, tmpV: new T.Vector3() };
+    return { g, body, model, k, mixer, actions, cur: null, glb: true, man: isMan, mats, gun: gun || { visible: false }, hasGun: !!gun, hand, flash, flashT: 0, key: '', last: p, tmpV: new T.Vector3() };
+  }
+  /** hat model on the head bone, kept upright; size from the head bone -> head-top distance */
+  _manHat(model, p) {
+    const A = this.assets, T = this.T, tpl = A.hats && A.hats[p.hatModel || 'cowboy']; if (!tpl) return;
+    const head = findNode(model, 'mixamorig:Head'), top = findNode(model, 'mixamorig:HeadTop_End'); if (!head || !top) return;
+    model.updateMatrixWorld(true); const a = new T.Vector3(), b = new T.Vector3(), q = new T.Quaternion();
+    head.getWorldPosition(a); top.getWorldPosition(b); const hh = a.distanceTo(b) || 0.5; head.getWorldQuaternion(q);
+    const hg = new T.Group(), hat = tpl.clone(true), w = hh * (p.hatModel === 'top' ? 1.35 : 1.9);
+    hg.quaternion.copy(q.invert()); hg.position.copy(top.position); hat.scale.setScalar(w); hat.position.y = -0.3 * hh; hg.add(hat); head.add(hg);
   }
   _play(r, name, ts = 1) {
     const a = r.actions[name] || r.actions.Idle; if (!a) return; a.timeScale = ts;
@@ -47,10 +59,11 @@ export class Characters {
   }
   _poseGlb(r, p) {
     const sc = p.s || 1, mv = p.moving || 0, cr = p.crouch || 0, dead = p.dead || 0;
-    r.g.position.set(p.x, p.y, p.z); r.g.rotation.order = 'YXZ'; r.g.rotation.set(0, p.h, 0); r.g.scale.setScalar(sc);
+    r.g.position.set(p.x, p.y, p.z); r.g.rotation.order = 'YXZ'; r.g.rotation.set(r.man ? -(p.dead || 0) * 1.5 : 0, p.h, 0); r.g.scale.setScalar(sc);
     r.model.scale.set(r.k, r.k * (1 - 0.28 * cr), r.k);
     let clip = 'Idle', ts = 1;
-    if (dead > 0.02) clip = 'Death';
+    if (dead > 0.02 && !r.man) clip = 'Death';
+    else if (r.man && (dead > 0.02 || mv <= 0.05)) { clip = 'Idle'; ts = 0; }
     else if (mv > 0.9) { clip = 'Run'; ts = Math.max(0.8, Math.min(1.5, mv / 1.1)); }
     else if (mv > 0.05) { clip = 'Walk'; ts = Math.max(0.6, Math.min(1.6, mv / 0.55)); }
     else if (p.gun && p.aim) clip = 'Attacking_Idle';
@@ -80,7 +93,7 @@ export class Characters {
   /** p = {x,y,z,h, s(scale), phase, moving(0..1.3), air, crouch(0..1), aim(bool), gun(bool), flash(bool), dead(0..1), color, pants, skin, hat, vis} */
   set(key, p) {
     let r = this.rigs.get(key);
-    const sig = (p.color || '') + (p.pants || '') + (p.hat || '') + (p.skin || '') + (p.swat ? 'S' : '') + (p.rifle ? 'R' : '');
+    const sig = (p.color || '') + (p.pants || '') + (p.hat || '') + (p.skin || '') + (p.swat ? 'S' : '') + (p.rifle ? 'R' : '') + (p.man ? 'M' : '') + (p.hatModel || '');
     if (r && r.key !== sig) { this.remove(key); r = null; }
     if (!r) { r = this._make(p); r.key = sig; this.rigs.set(key, r); }
     r.g.visible = p.vis !== false; r.seen = true;

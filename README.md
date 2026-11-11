@@ -85,3 +85,6 @@ New files in `client/assets/models/`: `swat.glb` (rigged SWAT officer, used for 
 They are visual only (no collision) and untested in a real browser: sizes/orientation come from bounding boxes, so tweak `SITES` if something looks off. `highway.glb` is not used (roads come from OpenStreetMap). Missing/failed files simply don't appear.
 
 Code-built buildings (`client/src/buildings.js`, no model files): Abandoned Factory, King's Escape Port, Kondapalli Crew Den, Abandoned Warehouse, Port Godown (meeting) and the smuggling yard are placed at their story anchors by `sites.js`. Police stations already had a built-in model. Visual only, untested in a browser; adjust `BUILDINGS`.
+
+## v3n - Raghav's gang and The King (Mixamo man + hats)
+`man.glb` (rigged Mixamo man, one walk clip - played in place, frozen when standing, tipped over when dead), `hat_cowboy.glb`, `hat_top.glb`. Gang thugs/rivals wear the cowboy hat, the gang boss and The King (cutscenes) the top hat; Dasari/Pasha cutscene actors get the cowboy hat. Hats are attached to the head bone and sized from the head (`_manHat` in characters.js). Also fixed: hand-bone lookup now handles three's name sanitising (`Fist.R` -> `FistR`) so pistol/rifle follow the hand. Untested visually: hat height/size and man scale come from measured bounds.
