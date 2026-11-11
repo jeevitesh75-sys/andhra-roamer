@@ -13,6 +13,7 @@ import { Characters } from './characters.js';
 import { loadAssets } from './glbassets.js';
 import { ParkedLot, distToVehicle } from './parked.js';
 import { Law } from './law.js';
+import { Props } from './props.js';
 import { Joystick } from './joystick.js';
 import { Voice } from './voice.js';
 import { StoryClient } from './story.js';
@@ -101,7 +102,7 @@ async function startGame() {
     const q = G.save.quality || (matchMedia('(max-width: 800px)').matches ? 'low' : 'medium');
     try { G.scene = new Scene3D(G.T, $('game'), G.world, q, G.assets); } catch (e) { $('ldErr').textContent = 'Graphics failed to start: ' + e.message; console.error(e); return; }
     G.veh = new Vehicle(prof.veh, G.world); G.crowd = new Crowd(G.world); G.police = new Police(G.world); G.wp = null;
-    G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.chars = new Characters(G.T, G.scene.scene, G.assets); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
+    G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.props = new Props(G); G.chars = new Characters(G.T, G.scene.scene, G.assets); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
     G.money = G.save.money || 0; G.earned = G.save.earned || 0;
     initInput(); initHud();
   } else { G.veh.setType(prof.veh); G.scene.removeModel('me'); }
@@ -708,6 +709,7 @@ function renderWorldExtras(dt, pose) {
   const sc = G.scene, C = G.chars, S = G.storyC, cine = S && S.cine, w = G.world; const fx = G.foot ? G.foot.x : pose.x, fz = G.foot ? G.foot.z : pose.z, t = performance.now() / 1000;
   S.update(dt); updateAI(dt);
   G.lot.render(sc, fx, fz);
+  if (G.props) { try { G.props.render(sc.scene, fx, fz); } catch (e) { console.warn('props', e); G.props = null; } }
   // stations
   for (const st of G.law.stations) { const near = Math.hypot(st.x - fx, st.z - fz) < 450, o = stMeshes.get(st.id); if (near && !o) stMeshes.set(st.id, stationMesh(st)); else if (!near && o) { sc.scene.remove(o.g); stMeshes.delete(st.id); } else if (o) { const on = (t * 3 | 0) % 2; o.l1.visible = !!on; o.l2.visible = !on; } }
   // local character

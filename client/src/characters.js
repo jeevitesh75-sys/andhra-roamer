@@ -13,7 +13,8 @@ export class Characters {
   /** rigged, animated glTF person (Quaternius). Returns null if the model is not available so the box rig is used. */
   _makeGlb(p) {
     const A = this.assets, T = this.T; if (!A || !A.char || !A.SkeletonUtils) return null;
-    const model = A.SkeletonUtils.clone(A.char.scene), g = new T.Group(), body = new T.Group(), k = A.char.scale; g.add(body); body.add(model); model.scale.setScalar(k);
+    const swat = p.hat === 'cap' && A.swat, CH = swat || A.char;
+    const model = A.SkeletonUtils.clone(CH.scene), g = new T.Group(), body = new T.Group(), k = CH.scale; g.add(body); body.add(model); model.scale.setScalar(k);
     const mats = [], cache = new Map(), col = c => new T.Color(c);
     const tint = { Shirt: p.color || '#2980b9', UnderShirt: new T.Color(p.color || '#2980b9').multiplyScalar(0.8), Pants: p.pants || '#2c3e50' }; if (p.skin) tint.Skin = p.skin;
     model.traverse(o => {
@@ -23,13 +24,14 @@ export class Characters {
       o.material = c;
     });
     const mixer = new T.AnimationMixer(model), actions = {};
-    for (const clip of A.char.anims) if (!clip.name.includes('|')) actions[clip.name] = mixer.clipAction(clip);
-    const gun = A.pistol ? A.pistol.clone(true) : null, flash = new T.Mesh(this.geo.flash, new T.MeshBasicMaterial({ color: 0xffd24a })); flash.visible = false;
-    if (gun) { flash.position.set(0, 0.04, 0.22); flash.scale.setScalar(0.7); gun.add(flash); gun.visible = false; g.add(gun); }
+    for (const clip of CH.anims) if (!clip.name.includes('|')) actions[clip.name] = mixer.clipAction(clip);
+    if (swat) { if (actions.Idle_Gun) actions.Idle = actions.Idle_Gun; if (actions.Idle_Gun_Pointing) actions.Attacking_Idle = actions.Idle_Gun_Pointing; }
+    const gunSrc = swat && A.rifle ? A.rifle : A.pistol, gun = gunSrc ? gunSrc.clone(true) : null, flash = new T.Mesh(this.geo.flash, new T.MeshBasicMaterial({ color: 0xffd24a })); flash.visible = false;
+    if (gun) { flash.position.set(0, 0.04, swat && A.rifle ? 0.95 : 0.22); flash.scale.setScalar(0.7); gun.add(flash); gun.visible = false; g.add(gun); }
     const hand = model.getObjectByName('Fist.R') || model.getObjectByName('LowerArm.R');
     const hatMesh = (geo, c, x, y, z, sc) => { const o = new T.Mesh(geo, this._mat(c)); o.position.set(x, y, z); o.scale.setScalar(sc || 1); o.castShadow = true; body.add(o); return o; };
     const G = this.geo, hy = CHAR_TOP;
-    if (p.hat === 'cap') { hatMesh(G.cap, p.hatColor || '#1d2f63', 0, hy + 0.02, 0, 1.45); hatMesh(G.brim, '#111', 0, hy - 0.03, 0.27, 1.7); }
+    if (p.hat === 'cap' && !swat) { hatMesh(G.cap, p.hatColor || '#1d2f63', 0, hy + 0.02, 0, 1.45); hatMesh(G.brim, '#111', 0, hy - 0.03, 0.27, 1.7); }
     else if (p.hat === 'helmet') { const h = hatMesh(G.cap, '#f5f5f5', 0, hy - 0.02, 0, 1.7); h.scale.set(1.9, 2.4, 1.9); }
     else if (p.hat === 'bandana') hatMesh(G.hat, '#b0171f', 0, hy - 0.06, 0, 1.45);
     else if (p.hat === 'crown') hatMesh(G.cap, '#d4af37', 0, hy + 0.04, 0, 1.1);

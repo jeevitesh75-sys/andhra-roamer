@@ -10,7 +10,10 @@ const U = rel => new URL('../assets/models/' + rel, import.meta.url).href;
 export const FILES = {
   lambo: 'lamborghini.glb', police: 'police_car.glb', truck: 'truck.glb', bus: 'school_bus.glb',
   bikeA: 'bike_cruiser.glb', bikeB: 'bike_sport.glb', char: 'character.glb', pistol: 'pistol.glb', tree: 'tree.glb',
+  swat: 'swat.glb', rifle: 'rifle.glb', gas: 'gas_station.glb', garage: 'garage.glb', club: 'club.glb', tavern: 'tavern.glb',
 };
+/** landmark props: target = longest horizontal side in metres */
+export const PROPS = { gas: { target: 22 }, garage: { target: 16 }, club: { target: 24 }, tavern: { target: 14 } };
 
 /** how to turn each raw model into a game vehicle.
  *  rotX/rotY: put the model upright facing +z.  len: target length (m).  sx: extra width factor.
@@ -138,6 +141,21 @@ function buildPistol(T, gltf) {
   const out = new T.Group(); out.add(w); out.traverse(o => { if (o.isMesh) o.castShadow = true; }); return out;
 }
 
+/** rifle: origin near the grip, barrel +z, ~1 m long (raw model: barrel towards -z, ~4.6 units long) */
+function buildRifle(T, gltf) {
+  const inner = gltf.scene; inner.position.set(0, 0.7, -0.4);
+  const w = new T.Group(); w.add(inner); w.rotation.y = Math.PI; w.scale.setScalar(1.0 / 4.63);
+  const out = new T.Group(); out.add(w); out.traverse(o => { if (o.isMesh) o.castShadow = true; }); return out;
+}
+/** landmark prop: centred on x/z, sitting on y=0, longest horizontal side = target metres. Returns {scene, w, d, h} (footprint after scaling). */
+function buildProp(T, gltf, target) {
+  const sc = gltf.scene; sc.updateMatrixWorld(true); const b = new T.Box3().setFromObject(sc), size = new T.Vector3(); b.getSize(size);
+  const k = target / Math.max(size.x, size.z), g = new T.Group(), inner = new T.Group(); inner.add(sc);
+  sc.position.set(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2); inner.scale.setScalar(k); g.add(inner);
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = true; } });
+  return { scene: g, w: size.x * k, d: size.z * k, h: size.y * k };
+}
+
 export async function loadAssets(T, onProgress = () => {}) {
   const A = { ok: false, veh: {}, notes: [] };
   let GLTFLoader, SkeletonUtils;
@@ -159,6 +177,16 @@ export async function loadAssets(T, onProgress = () => {}) {
       A.char = { scene: sc, anims: gl.char.animations, scale: CHAR_HEIGHT / h, footY: -b.min.y * CHAR_HEIGHT / h };
     } catch (e) { console.warn('character setup failed', e); }
   }
+  if (gl.swat) {
+    try {
+      const sc = gl.swat.scene; sc.updateMatrixWorld(true); const b = new T.Box3().setFromObject(sc), h = b.max.y - b.min.y;
+      const anims = gl.swat.animations.map(c => { const n = c.name.split('|').pop(); c.name = n; return c; });
+      A.swat = { scene: sc, anims, scale: CHAR_HEIGHT / h, footY: -b.min.y * CHAR_HEIGHT / h };
+    } catch (e) { console.warn('swat setup failed', e); }
+  }
+  if (gl.rifle) { try { A.rifle = buildRifle(T, gl.rifle); } catch (e) { console.warn('rifle setup failed', e); } }
+  A.props = {};
+  for (const [k, cfg] of Object.entries(PROPS)) if (gl[k]) { try { A.props[k] = buildProp(T, gl[k], cfg.target); } catch (e) { console.warn('prop failed', k, e); } }
   if (gl.pistol) { try { A.pistol = buildPistol(T, gl.pistol); } catch (e) { console.warn('pistol setup failed', e); } }
   if (gl.tree) { try { A.treeGeo = buildTreeGeometry(T, gl.tree); } catch (e) { console.warn('tree setup failed', e); } }
   A.ok = !!(Object.keys(A.veh).length || A.char || A.treeGeo);

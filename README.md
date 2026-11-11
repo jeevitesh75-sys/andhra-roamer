@@ -78,3 +78,10 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - Round trees in forests use your tree model (still instanced, cheap); palms stay procedural.
 - Vehicle sizes changed in `physics.js` SPECS (car 4.4x2.0, bus 9.4x2.7, lorry 6.8x2.7) so collisions match the models.
 - `index.html` has an import map (three + GLTFLoader from jsDelivr, three r160). Test: `node tests/glb-assets-test.mjs`.
+
+## v3l - more GLB models (SWAT, rifle, landmark props)
+- `swat.glb` + `rifle.glb`: police officers (hat = cap) now use the SWAT model with Idle_Gun / Idle_Gun_Pointing / Walk / Run / Death and carry the assault rifle. Civilians/gang keep the Quaternius character + pistol.
+- `gas_station.glb`, `tavern.glb` are placed beside a road near the start town; `garage.glb`, `club.glb` at the story anchors `garage` / `club`. They get collision boxes, are shown within ~380 m and removed beyond (src/props.js).
+- Everything falls back to the old models / nothing if a file fails to load.
+- NOT used yet: phone, highway, 2 bridges (no sensible place without road-geometry work), Google Drive packs (not imported; awaiting approval).
+- Untested on real hardware: actual GLB rendering, rifle grip/barrel orientation, prop orientation (which side is the "front") and placement on the real map. Logic tests: `node tests/props-test.mjs`, `node tests/glb-assets-test.mjs`.
