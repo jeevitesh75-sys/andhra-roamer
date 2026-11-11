@@ -88,3 +88,8 @@ Code-built buildings (`client/src/buildings.js`, no model files): Abandoned Fact
 
 ## v3n - Raghav's gang and The King (Mixamo man + hats)
 `man.glb` (rigged Mixamo man, one walk clip - played in place, frozen when standing, tipped over when dead), `hat_cowboy.glb`, `hat_top.glb`. Gang thugs/rivals wear the cowboy hat, the gang boss and The King (cutscenes) the top hat; Dasari/Pasha cutscene actors get the cowboy hat. Hats are attached to the head bone and sized from the head (`_manHat` in characters.js). Also fixed: hand-bone lookup now handles three's name sanitising (`Fist.R` -> `FistR`) so pistol/rifle follow the hand. Untested visually: hat height/size and man scale come from measured bounds.
+
+## v3o - installable app (PWA) / APK
+- Added `client/manifest.webmanifest`, `client/sw.js`, `client/icons/*`, linked from index.html; vercel.json serves the service worker without caching.
+- Install: open the Vercel site in Chrome -> menu -> Install app. APK: pwabuilder.com -> enter the Vercel URL -> Android -> download.
+- Service worker: code is network-first (pushes show up immediately), models/map data/three.js CDN are cached after first load. Untested on a real phone.
