@@ -93,3 +93,8 @@ Code-built buildings (`client/src/buildings.js`, no model files): Abandoned Fact
 - Added `client/manifest.webmanifest`, `client/sw.js`, `client/icons/*`, linked from index.html; vercel.json serves the service worker without caching.
 - Install: open the Vercel site in Chrome -> menu -> Install app. APK: pwabuilder.com -> enter the Vercel URL -> Android -> download.
 - Service worker: code is network-first (pushes show up immediately), models/map data/three.js CDN are cached after first load. Untested on a real phone.
+
+## v3p - works offline
+- `sw.js` now precaches EVERYTHING listed in `client/precache.json` (code, three.js from the CDN, all map data, all 3D models, ~22 MB) on the first online visit; after that the game starts with no internet. Story mode runs locally when no server is reachable ("Playing offline"); multiplayer/voice still need internet.
+- IMPORTANT: when you add/rename/change files, run `node tools/make-precache.mjs` before `git push` (it rewrites precache.json and bumps its version so phones re-download).
+- Test: `node tests/offline-test.mjs` (Playwright; verifies cache + offline reload; the CDN three.js can't be reached in the sandbox, so a full offline game start is untested).
