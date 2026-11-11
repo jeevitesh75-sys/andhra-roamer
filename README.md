@@ -69,3 +69,12 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - Complete story replacement (see above). `client/src/storydata.js` is the script, `server/story.js` the shared step engine; `tests/story2-test.mjs` plays all three endings with two simulated players.
 - After jail you are put straight behind the wheel of a fuelled vehicle on the road outside the station.
 - **Edit HUD** (menu): drag any control, tap it and resize it; saved on your device.
+
+## v3k - real 3D models (glTF)
+- `client/assets/models/*.glb`: Lamborghini (player/traffic cars), police car, truck (lorry), school bus, 2 motorcycles, animated character, pistol, tree.
+- `client/src/glbassets.js` loads and prepares them; `models.js`, `characters.js` and `scene.js` use them and **fall back to the old box models** if anything fails to load.
+- **Wheels really spin and steer**: the Lamborghini, police car and truck have wheel meshes; the bus and both bikes had wheels fused into the body, so they are cut out at load time (see `VEHICLES` in glbassets.js).
+- Characters (you, partners, gang, officers) use the Quaternius rig: Idle / Walk / Run / Death / aiming stance, pistol in the right hand. Shirt/pants colours are tinted per role.
+- Round trees in forests use your tree model (still instanced, cheap); palms stay procedural.
+- Vehicle sizes changed in `physics.js` SPECS (car 4.4x2.0, bus 9.4x2.7, lorry 6.8x2.7) so collisions match the models.
+- `index.html` has an import map (three + GLTFLoader from jsDelivr, three r160). Test: `node tests/glb-assets-test.mjs`.

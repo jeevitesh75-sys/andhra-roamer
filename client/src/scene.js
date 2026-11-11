@@ -29,8 +29,8 @@ void main(){
 }`;
 
 export class Scene3D {
-  constructor(T, canvas, world, quality = 'medium') {
-    this.T = T; this.world = world; this.canvas = canvas; this.qName = quality; this.q = QUALITY[quality];
+  constructor(T, canvas, world, quality = 'medium', assets = null) {
+    this.T = T; this.assets = assets; this.world = world; this.canvas = canvas; this.qName = quality; this.q = QUALITY[quality];
     this.time = 0; this.dayf = 1; this.chunks = new Map(); this.cityObjs = new Map(); this.models = new Map(); this.npcModels = new Map();
     this.envMats = []; this.lastEnv = -1; this.buildQueue = [];
     const r = this.renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -42,7 +42,7 @@ export class Scene3D {
     this.camera = new T.PerspectiveCamera(65, 1, 0.3, 7000);
     this.scene.fog = new T.FogExp2(0xb8d4ee, 0.00105);
     this.cHorizon = new T.Color(); this.cZenith = new T.Color(); this.cSun = new T.Color(); this.tmpC = new T.Color();
-    this.models3d = createModels(T);
+    this.models3d = createModels(T, assets);
     this._textures(); this._materials(); this._sky(); this._lights(); this._water(); this._envMap();
     this._landmarks(); this._labels(); this._stations(); this._initLamps(); this._initExtras(); this._npcInit(); this._beacon();
     this.resize();
@@ -99,7 +99,7 @@ export class Scene3D {
     this.mBuilding = e(new T.MeshStandardMaterial({ vertexColors: true, map: this.texFacade, emissive: 0xffffff, emissiveMap: this.texLit, emissiveIntensity: 0, roughness: 0.85, metalness: 0 }), 0.4);
     this.mTree = e(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: T.DoubleSide }), 0.25);
     this.mConcrete = e(new T.MeshStandardMaterial({ color: 0x9a9a94, roughness: 0.95 }), 0.3);
-    this.geoRound = this._geo(roundTreeGeometry()); this.geoPalm = this._geo(palmGeometry());
+    this.geoRound = (this.assets && this.assets.treeGeo) || this._geo(roundTreeGeometry()); this.geoPalm = this._geo(palmGeometry());
   }
   _geo(a) {
     const T = this.T, g = new T.BufferGeometry();
@@ -410,7 +410,7 @@ export class Scene3D {
   }
   /* ---- roof gun + tracers ---- */
   attachGun(m, type) {
-    if (m.gun) return m.gun; const T = this.T, o = { car: [0, 1.55, -0.3], bus: [0, 3.25, 0.5], lorry: [0, 3.1, 1.2] }[type] || [0, 1.6, 0];
+    if (m.gun) return m.gun; const T = this.T, o = m.mount || { car: [0, 1.55, -0.3], bus: [0, 3.25, 0.5], lorry: [0, 3.1, 1.2] }[type] || [0, 1.6, 0];
     const yawG = new T.Group(), pitchG = new T.Group(), mat = new T.MeshStandardMaterial({ color: 0x2b2f36 }), mat2 = new T.MeshStandardMaterial({ color: 0x555b66 });
     const base = new T.Mesh(new T.CylinderGeometry(0.32, 0.4, 0.22, 10), mat), body = new T.Mesh(new T.BoxGeometry(0.34, 0.3, 0.7), mat2), barrel = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 1.1, 8), mat);
     barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0, 0.85); body.position.set(0, 0, 0.1); pitchG.position.y = 0.3; pitchG.add(body, barrel);

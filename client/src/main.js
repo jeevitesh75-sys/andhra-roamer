@@ -10,6 +10,7 @@ import { generateOffers, JobRunner, FUEL_PRICE, rankFor } from './jobs.js';
 import { AudioFX } from './audio.js';
 import { HudEditor } from './hudedit.js';
 import { Characters } from './characters.js';
+import { loadAssets } from './glbassets.js';
 import { ParkedLot, distToVehicle } from './parked.js';
 import { Law } from './law.js';
 import { Joystick } from './joystick.js';
@@ -37,6 +38,7 @@ const G = window.__game = { keys: {}, touch: {}, steer: 0, camMode: 0, camYaw: 0
 
 /* ------------------------------------------------------------ loading */
 async function loadThree() {
+  try { return await import('three'); } catch (e) { console.warn('three via import map failed', e); }   // index.html import map -> same instance GLTFLoader uses
   const urls = [new URL('../vendor/three.module.js', import.meta.url).href, 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js', 'https://unpkg.com/three@0.160.0/build/three.module.js'];
   for (const u of urls) { try { return await import(u); } catch (e) { console.warn('three.js failed from', u, e); } }
   throw new Error('Could not load three.js. Check your internet connection (or put three.module.js in client/vendor/).');
@@ -48,7 +50,9 @@ async function boot() {
   try {
     progress('Loading engine...', 0.1);
     const [T] = await Promise.all([loadThree(), nextFrame()]);
-    G.T = T; progress('Building Andhra Pradesh...', 0.35); await nextFrame();
+    G.T = T; progress('Loading vehicles & characters...', 0.12);
+    try { G.assets = await loadAssets(T, f => progress('Loading vehicles & characters...', 0.12 + f * 0.2)); } catch (e) { console.warn('assets failed', e); G.assets = null; }
+    progress('Building Andhra Pradesh...', 0.35); await nextFrame();
     G.meta = {};
     G.audio = new AudioFX(); G.save = loadSave();
     buildMenu(); $('loading').hidden = true; $('menu').hidden = false;
@@ -95,9 +99,9 @@ async function startGame() {
   const first = !G.scene;
   if (first) {
     const q = G.save.quality || (matchMedia('(max-width: 800px)').matches ? 'low' : 'medium');
-    try { G.scene = new Scene3D(G.T, $('game'), G.world, q); } catch (e) { $('ldErr').textContent = 'Graphics failed to start: ' + e.message; console.error(e); return; }
+    try { G.scene = new Scene3D(G.T, $('game'), G.world, q, G.assets); } catch (e) { $('ldErr').textContent = 'Graphics failed to start: ' + e.message; console.error(e); return; }
     G.veh = new Vehicle(prof.veh, G.world); G.crowd = new Crowd(G.world); G.police = new Police(G.world); G.wp = null;
-    G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.chars = new Characters(G.T, G.scene.scene); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
+    G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.chars = new Characters(G.T, G.scene.scene, G.assets); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
     G.money = G.save.money || 0; G.earned = G.save.earned || 0;
     initInput(); initHud();
   } else { G.veh.setType(prof.veh); G.scene.removeModel('me'); }
@@ -641,7 +645,7 @@ function frame(now) {
   let me = null; if (!G.foot) { me = G.scene.model('me', v.type, G.vcolor); G.scene.placeModel(me, { ...pose, brake: v.brakeLit, lights: lightsOn, reverse: v.reversing, ax: v.ax, ay: v.ay, signed: v.u }); }
   G.scene.setHeadlight(lightsOn && info.night, { x: pose.x, y: pose.y, z: pose.z, h: pose.h }, v.spec);
   G.scene.updatePeds(G.crowd.list);
-  { const live = new Set(); if (G.police.active) for (const P of G.police.cars) { const c = P.car; live.add(P.id); const pm = G.scene.model(P.id, P.swat ? 'bus' : 'car', P.swat ? '#111827' : '#1d3a8a'); G.scene.placeModel(pm, { x: c.x, z: c.z, y: c.y || 0, h: c.h, pitch: c.pitch || 0, roll: c.roll || 0, steer: c.steerAngle || 0, brake: c.brakeLit, lights: true, reverse: c.reversing, signed: c.u }); pm.group.rotation.z += P.hp <= 0 ? 0.5 : 0; }
+  { const live = new Set(); if (G.police.active) for (const P of G.police.cars) { const c = P.car; live.add(P.id); const pm = G.scene.model(P.id, P.swat ? 'bus' : 'police', P.swat ? '#111827' : '#1d3a8a'); G.scene.placeModel(pm, { x: c.x, z: c.z, y: c.y || 0, h: c.h, pitch: c.pitch || 0, roll: c.roll || 0, steer: c.steerAngle || 0, brake: c.brakeLit, lights: true, reverse: c.reversing, signed: c.u }); pm.group.rotation.z += P.hp <= 0 ? 0.5 : 0; }
     for (const k of [...G.scene.models.keys()]) if (k.startsWith('pol') && !live.has(k)) G.scene.removeModel(k);
     if (G.police.active && (G.sirenT = (G.sirenT || 0) - dt) < 0) { G.sirenT = 0.9; G.audio.chime(); } }
   if (me && !G.dead) gunFrame(dt, me, pose, v); else G.scene.tickFx(dt);
@@ -712,7 +716,7 @@ function renderWorldExtras(dt, pose) {
   // officers + roaming patrols
   for (const o of G.law.officers) { if (Math.hypot(o.x - fx, o.z - fz) > 260) { C.remove('cop' + o.id); continue; } C.set('cop' + o.id, { x: o.x, y: w.heightAt(o.x, o.z), z: o.z, h: o.h, phase: o.phase, moving: o.moving, color: o.swat ? '#15171c' : '#2c4a8c', pants: o.swat ? '#15171c' : '#1b2a52', hat: o.swat ? 'helmet' : 'cap', gun: o.state === 'chase', aim: o.state === 'chase' && o.firing > 0, flash: o.firing > 0.05, dead: o.hp <= 0 ? 1 : 0, s: o.swat ? 1.1 : 1 }); }
   C.sweep('cop');
-  const live = new Set(); for (const r of G.law.roamers) { const key = 'lw' + r.id; live.add(key); const m = sc.model(key, r.type, r.type === 'bike' ? '#1d3a8a' : '#1d3a8a'); sc.placeModel(m, { x: r.x, z: r.z, y: r.y, h: r.h, pitch: 0, roll: 0, steer: 0, lights: true, signed: r.u }); }
+  const live = new Set(); for (const r of G.law.roamers) { const key = 'lw' + r.id; live.add(key); const m = sc.model(key, r.type === 'bike' ? 'bike' : 'police', '#1d3a8a'); sc.placeModel(m, { x: r.x, z: r.z, y: r.y, h: r.h, pitch: 0, roll: 0, steer: 0, lights: true, signed: r.u }); }
   for (const k of [...sc.models.keys()]) if (k.startsWith('lw') && !live.has(k)) sc.removeModel(k);
   // gang members
   if (S.gang.length) { for (const g of S.gang) { const L = S.look(g); C.set('g' + g.id, { x: g.x, y: w.heightAt(g.x, g.z), z: g.z, h: g.h, phase: g.phase, moving: g.mv, color: L.color, pants: L.pants, hat: L.hat, gun: true, aim: g.fire > 0, dead: g.hp <= 0 ? 1 : 0, s: g.kind === 'boss' ? 1.25 : 1 }); g.fire = Math.max(0, (g.fire || 0) - dt); } }

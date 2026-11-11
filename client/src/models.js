@@ -1,5 +1,6 @@
 // Procedural vehicle models. THREE is injected (loaded from CDN at runtime). Local frame: +z forward, +y up, +x LEFT.
-export function createModels(T) {
+import { instantiateVehicle, collectSharedMaterials } from './glbassets.js';
+export function createModels(T, assets = null) {
   const M = {
     glass: new T.MeshStandardMaterial({ color: 0x0d141b, metalness: 0.85, roughness: 0.06 }),
     tire: new T.MeshStandardMaterial({ color: 0x141414, roughness: 0.95 }),
@@ -120,10 +121,20 @@ export function createModels(T) {
     return { group: g, body, wheels, ctx, type: 'bike', lightOff: 0.9 };
   }
 
-  const BUILD = { car: buildCar, bus: buildBus, lorry: buildLorry, bike: buildBike };
+  const BUILD = { car: buildCar, bus: buildBus, lorry: buildLorry, bike: buildBike, police: buildCar };
+  if (assets && assets.veh) { try { collectSharedMaterials(assets, envMats); } catch (e) { console.warn(e); } }
+  const hashStr = str => { let h = 0; for (const ch of String(str)) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h); };
+  /** real glTF model for this vehicle type if it loaded (bikes: two models, picked by colour); null -> use the built-in box model */
+  function createGlb(type, colorHex) {
+    const list = assets && assets.veh && assets.veh[type]; if (!list || !list.length) return null;
+    try { return instantiateVehicle(T, list[hashStr(colorHex) % list.length], type, colorHex, paintMats, envMats); }
+    catch (e) { console.warn('glb vehicle failed, using built-in model', type, e); return null; }
+  }
   /** returns a vehicle model handle */
   function create(type, colorHex) {
+    const glb = createGlb(type, colorHex); if (glb) return glb;
     const m = BUILD[type](new T.Color(colorHex).getHex());
+    m.type = type;
     m.group.traverse(o => { if (o.isMesh) o.frustumCulled = true; });
     m.color = colorHex;
     m.setColor = hex => { m.ctx.paint.color.set(hex); m.color = hex; };
