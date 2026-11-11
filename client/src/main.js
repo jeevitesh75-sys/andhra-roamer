@@ -10,10 +10,10 @@ import { generateOffers, JobRunner, FUEL_PRICE, rankFor } from './jobs.js';
 import { AudioFX } from './audio.js';
 import { HudEditor } from './hudedit.js';
 import { Characters } from './characters.js';
+import { Sites } from './sites.js';
 import { loadAssets } from './glbassets.js';
 import { ParkedLot, distToVehicle } from './parked.js';
 import { Law } from './law.js';
-import { Props } from './props.js';
 import { Joystick } from './joystick.js';
 import { Voice } from './voice.js';
 import { StoryClient } from './story.js';
@@ -102,7 +102,7 @@ async function startGame() {
     const q = G.save.quality || (matchMedia('(max-width: 800px)').matches ? 'low' : 'medium');
     try { G.scene = new Scene3D(G.T, $('game'), G.world, q, G.assets); } catch (e) { $('ldErr').textContent = 'Graphics failed to start: ' + e.message; console.error(e); return; }
     G.veh = new Vehicle(prof.veh, G.world); G.crowd = new Crowd(G.world); G.police = new Police(G.world); G.wp = null;
-    G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.props = new Props(G); G.chars = new Characters(G.T, G.scene.scene, G.assets); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
+    G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.chars = new Characters(G.T, G.scene.scene, G.assets); G.sites = new Sites(G.T, G.scene.scene, G.assets); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
     G.money = G.save.money || 0; G.earned = G.save.earned || 0;
     initInput(); initHud();
   } else { G.veh.setType(prof.veh); G.scene.removeModel('me'); }
@@ -709,19 +709,19 @@ function renderWorldExtras(dt, pose) {
   const sc = G.scene, C = G.chars, S = G.storyC, cine = S && S.cine, w = G.world; const fx = G.foot ? G.foot.x : pose.x, fz = G.foot ? G.foot.z : pose.z, t = performance.now() / 1000;
   S.update(dt); updateAI(dt);
   G.lot.render(sc, fx, fz);
-  if (G.props) { try { G.props.render(sc.scene, fx, fz); } catch (e) { console.warn('props', e); G.props = null; } }
+  if (G.sites) G.sites.update(G, fx, fz);
   // stations
   for (const st of G.law.stations) { const near = Math.hypot(st.x - fx, st.z - fz) < 450, o = stMeshes.get(st.id); if (near && !o) stMeshes.set(st.id, stationMesh(st)); else if (!near && o) { sc.scene.remove(o.g); stMeshes.delete(st.id); } else if (o) { const on = (t * 3 | 0) % 2; o.l1.visible = !!on; o.l2.visible = !on; } }
   // local character
   if (G.foot) { const f = G.foot, role = S.myRole && ROLES[S.myRole]; C.set('me', { x: f.x, y: f.y, z: f.z, h: f.h, s: f.s, phase: f.phase, moving: f.moving, air: f.lift > 0.15, crouch: f.crouch, color: role ? role.shirt : G.profile.color, pants: role ? role.pants : '#2c3e50', gun: f.shotT > 0 || !!G.dead, aim: f.shotT > 0, flash: G.shotFlash > 0, dead: G.dead ? Math.min(1, G.dead.t = (G.dead.t || 0) + dt * 2) : 0, vis: !cine }); } else C.remove('me');
   G.shotFlash = Math.max(0, (G.shotFlash || 0) - dt);
   // officers + roaming patrols
-  for (const o of G.law.officers) { if (Math.hypot(o.x - fx, o.z - fz) > 260) { C.remove('cop' + o.id); continue; } C.set('cop' + o.id, { x: o.x, y: w.heightAt(o.x, o.z), z: o.z, h: o.h, phase: o.phase, moving: o.moving, color: o.swat ? '#15171c' : '#2c4a8c', pants: o.swat ? '#15171c' : '#1b2a52', hat: o.swat ? 'helmet' : 'cap', gun: o.state === 'chase', aim: o.state === 'chase' && o.firing > 0, flash: o.firing > 0.05, dead: o.hp <= 0 ? 1 : 0, s: o.swat ? 1.1 : 1 }); }
+  for (const o of G.law.officers) { if (Math.hypot(o.x - fx, o.z - fz) > 260) { C.remove('cop' + o.id); continue; } C.set('cop' + o.id, { x: o.x, y: w.heightAt(o.x, o.z), z: o.z, h: o.h, phase: o.phase, moving: o.moving, color: o.swat ? '#15171c' : '#2c4a8c', pants: o.swat ? '#15171c' : '#1b2a52', hat: o.swat ? 'helmet' : 'cap', swat: !!o.swat, gun: o.state === 'chase', aim: o.state === 'chase' && o.firing > 0, flash: o.firing > 0.05, dead: o.hp <= 0 ? 1 : 0, s: o.swat ? 1.1 : 1 }); }
   C.sweep('cop');
   const live = new Set(); for (const r of G.law.roamers) { const key = 'lw' + r.id; live.add(key); const m = sc.model(key, r.type === 'bike' ? 'bike' : 'police', '#1d3a8a'); sc.placeModel(m, { x: r.x, z: r.z, y: r.y, h: r.h, pitch: 0, roll: 0, steer: 0, lights: true, signed: r.u }); }
   for (const k of [...sc.models.keys()]) if (k.startsWith('lw') && !live.has(k)) sc.removeModel(k);
   // gang members
-  if (S.gang.length) { for (const g of S.gang) { const L = S.look(g); C.set('g' + g.id, { x: g.x, y: w.heightAt(g.x, g.z), z: g.z, h: g.h, phase: g.phase, moving: g.mv, color: L.color, pants: L.pants, hat: L.hat, gun: true, aim: g.fire > 0, dead: g.hp <= 0 ? 1 : 0, s: g.kind === 'boss' ? 1.25 : 1 }); g.fire = Math.max(0, (g.fire || 0) - dt); } }
+  if (S.gang.length) { for (const g of S.gang) { const L = S.look(g); C.set('g' + g.id, { x: g.x, y: w.heightAt(g.x, g.z), z: g.z, h: g.h, phase: g.phase, moving: g.mv, color: L.color, pants: L.pants, hat: L.hat, rifle: g.kind === 'boss', gun: true, aim: g.fire > 0, dead: g.hp <= 0 ? 1 : 0, s: g.kind === 'boss' ? 1.25 : 1 }); g.fire = Math.max(0, (g.fire || 0) - dt); } }
   C.sweep('g'); 
   // cutscene actors
   if (cine && S.cine.shotActors) { const sh = S.cine.shotActors, A = S.cine.A; (sh.actors || []).forEach(a => { const R = ROLES[a.id] || NPCS[a.id]; if (!R) return; const x = A.x + a.at[0], z = A.z + a.at[1]; C.set('cs_' + a.id, { x, y: w.heightAt(x, z), z, h: Math.atan2(-a.at[0] + (Math.random() * 0), -a.at[1]) + 0, color: R.shirt, pants: R.pants, hat: R.hat, s: R.s || 1, phase: t * 2, moving: 0 }); }); (sh.props || []).forEach((p, i) => { const m = sc.model('csp' + i, 'car', p.color); sc.placeModel(m, { x: A.x + p.at[0], z: A.z + p.at[1], y: w.heightAt(A.x + p.at[0], A.z + p.at[1]), h: p.h, pitch: 0, roll: 0, steer: 0, lights: !!p.bar }); }); }

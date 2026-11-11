@@ -2,7 +2,7 @@
 // and for the models whose wheels are fused into the body the wheel cylinders really contain triangles.
 import assert from 'node:assert';
 import fs from 'node:fs';
-import { FILES, VEHICLES } from '../client/src/glbassets.js';
+import { FILES, VEHICLES, SITES } from '../client/src/glbassets.js';
 const dir = new URL('../client/assets/models/', import.meta.url);
 const read = f => { const d = fs.readFileSync(new URL(f, dir)); assert.equal(d.toString('latin1', 0, 4), 'glTF', f + ' is a GLB'); const l = d.readUInt32LE(12); return { j: JSON.parse(d.toString('utf8', 20, 20 + l)), d, off: 20 + l }; };
 const CT = { 5126: [Float32Array, 4], 5123: [Uint16Array, 2], 5125: [Uint32Array, 4] }, NC = { SCALAR: 1, VEC3: 3 };
@@ -23,4 +23,10 @@ for (const [type, list] of Object.entries(VEHICLES)) for (const cfg of list) {
     counts.forEach(c => assert(c > 150, `${cfg.file}: wheel cylinder holds triangles (${c})`)); console.log('ok  ', type, cfg.file, 'cut-out wheel triangles:', counts.join(','));
   }
 }
+// new story-site models: every SITES entry points at a shipped file with meshes
+for (const c of SITES) { assert(FILES[c.file], 'site file key ' + c.key); const g = read(FILES[c.file]); assert(g.j.meshes && g.j.meshes.length, c.key + ' has meshes'); console.log('ok   site', c.key, '->', FILES[c.file]); }
+// SWAT rig has the clips the character code needs, and the rifle is a plain mesh
+{ const g = read(FILES.swat), names = (g.j.animations || []).map(a => a.name.split('|').pop()); for (const n of ['Idle', 'Walk', 'Run', 'Death', 'Idle_Gun_Pointing']) assert(names.includes(n), 'swat clip ' + n);
+  const bones = g.j.nodes.map(n => n.name); assert(bones.includes('LowerArm.R'), 'swat LowerArm.R bone'); console.log('ok   swat rig, clips:', names.length); }
+assert(read(FILES.rifle).j.meshes.length > 0); console.log('ok   rifle');
 console.log('GLB ASSET TESTS PASSED');

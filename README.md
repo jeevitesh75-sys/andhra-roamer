@@ -79,9 +79,9 @@ Tests: `node tests/server-test.js`, `node tests/physics-test.mjs`, `node tests/m
 - Vehicle sizes changed in `physics.js` SPECS (car 4.4x2.0, bus 9.4x2.7, lorry 6.8x2.7) so collisions match the models.
 - `index.html` has an import map (three + GLTFLoader from jsDelivr, three r160). Test: `node tests/glb-assets-test.mjs`.
 
-## v3l - more GLB models (SWAT, rifle, landmark props)
-- `swat.glb` + `rifle.glb`: police officers (hat = cap) now use the SWAT model with Idle_Gun / Idle_Gun_Pointing / Walk / Run / Death and carry the assault rifle. Civilians/gang keep the Quaternius character + pistol.
-- `gas_station.glb`, `tavern.glb` are placed beside a road near the start town; `garage.glb`, `club.glb` at the story anchors `garage` / `club`. They get collision boxes, are shown within ~380 m and removed beyond (src/props.js).
-- Everything falls back to the old models / nothing if a file fails to load.
-- NOT used yet: phone, highway, 2 bridges (no sensible place without road-geometry work), Google Drive packs (not imported; awaiting approval).
-- Untested on real hardware: actual GLB rendering, rifle grip/barrel orientation, prop orientation (which side is the "front") and placement on the real map. Logic tests: `node tests/props-test.mjs`, `node tests/glb-assets-test.mjs`.
+## v3l - story-site models, SWAT and rifle (glTF)
+New files in `client/assets/models/`: `swat.glb` (rigged SWAT officer, used for SWAT units - same animation set as the main character, helmet built in), `rifle.glb` (carried by SWAT and the boss), `club.glb`, `garage.glb`, `tavern.glb`, `gas_station.glb`, `bridge_a.glb`, `bridge_b.glb`, `phone.glb`.
+`client/src/sites.js` shows the buildings/props near their story anchors (club -> Velvet Club, garage -> Karthik's Garage, tavern -> Naidu's Tea Stall, gas station -> highway ambush, bridge_a -> Old Bridge, bridge_b -> police checkpoint, phone -> yard terminal). Table: `SITES` in `glbassets.js` (size, side offset, visibility range).
+They are visual only (no collision) and untested in a real browser: sizes/orientation come from bounding boxes, so tweak `SITES` if something looks off. `highway.glb` is not used (roads come from OpenStreetMap). Missing/failed files simply don't appear.
+
+Code-built buildings (`client/src/buildings.js`, no model files): Abandoned Factory, King's Escape Port, Kondapalli Crew Den, Abandoned Warehouse, Port Godown (meeting) and the smuggling yard are placed at their story anchors by `sites.js`. Police stations already had a built-in model. Visual only, untested in a browser; adjust `BUILDINGS`.
