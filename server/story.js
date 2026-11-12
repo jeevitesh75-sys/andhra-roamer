@@ -17,8 +17,8 @@ const CUT_TIMEOUT = 75000, VOTE_TIMEOUT = 50000, MISSION_STALE = 0;
 /** step lists per chapter: [id, need, extra] */
 const CHAPTERS = [
   { id: 1, name: 'TWO FRIENDS', steps: [['c1_intro', 'cut'], ['c1_explore', 'all'], ['c1_call', 'cut'], ['c1_drive', 'all'], ['c1_king', 'cut'], ['c1_first_job', 'all']] },
-  { id: 2, name: 'THE KINGDOM', steps: [['c2_org', 'cut'], ['c2_meeting', 'all'], ['c2_rival', 'all'], ['c2_escape', 'all'], ['c2_secret', 'all'], ['c2_protect', 'all'], ['c2_end', 'cut']] },
-  { id: 3, name: 'THE POLICE', steps: [['c3_dev', 'cut'], ['c3_station', 'all'], ['c3_checkpoint', 'all'], ['c3_wanted', 'all'], ['c3_arrest', 'cut'], ['c3_choice', 'vote', ['lawyer', 'escape']], ['c3_out', 'all'], ['c3_end', 'cut']] },
+  { id: 2, name: 'THE KINGDOM', steps: [['c2_org', 'cut'], ['c2_queen', 'cut'], ['c2_meeting', 'all'], ['c2_rival', 'all'], ['c2_escape', 'all'], ['c2_secret', 'all'], ['c2_protect', 'all'], ['c2_end', 'cut']] },
+  { id: 3, name: 'THE POLICE', steps: [['c3_dev', 'cut'], ['c3_station', 'all'], ['c3_checkpoint', 'all'], ['c3_wanted', 'all'], ['c3_arrest', 'cut'], ['c3_choice', 'vote', ['lawyer', 'escape']], ['c3_out', 'all'], ['c3_end', 'cut'], ['c3_sravani', 'cut']] },
   { id: 4, name: 'THE SECRET', steps: [['c4_leak', 'cut'], ['c4_fight', 'cut'], ['c4_split', 'all'], ['c4_reunite', 'all'], ['c4_choice', 'vote', ['forgive', 'cold']]] },
   { id: 5, name: 'BLOOD AND BETRAYAL', steps: [['c5_kidnap', 'cut'], ['c5_chase', 'all'], ['c5_factory', 'all'], ['c5_confront', 'cut'], ['c5_escape', 'all'], ['c5_choice', 'vote', ['trustDev', 'doubtDev']]] },
   { id: 6, name: 'THE FINAL NIGHT', steps: [['c6_plan', 'cut'], ['c6_chase', 'all'], ['c6_port', 'all'], ['c6_dialogue', 'cut'], ['c6_final', 'vote', ['friendship', 'underworld', 'betrayal']], ['c6_ending', 'all'], ['c6_epilogue', 'cut']] },

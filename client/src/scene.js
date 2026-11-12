@@ -470,16 +470,16 @@ export class Scene3D {
     const il = 1 / Math.hypot(sx, sy, sz), dir = [sx * il, sy * il, sz * il];
     const dayf = smooth(-0.12, 0.28, el), tw = Math.exp(-(((el - 0.02) / 0.16) ** 2));
     this.dayf = dayf;
-    const H = [lerp(0.04, 0.72, dayf), lerp(0.06, 0.84, dayf), lerp(0.13, 0.96, dayf)], Z = [lerp(0.01, 0.22, dayf), lerp(0.02, 0.46, dayf), lerp(0.07, 0.86, dayf)];
+    const H = [lerp(0.34, 0.72, dayf), lerp(0.09, 0.84, dayf), lerp(0.40, 0.96, dayf)], Z = [lerp(0.05, 0.22, dayf), lerp(0.03, 0.46, dayf), lerp(0.26, 0.86, dayf)];   // night: Vice-City magenta haze over a deep violet sky
     const hz = [lerp(H[0], 1.0, tw * 0.75), lerp(H[1], 0.55, tw * 0.75), lerp(H[2], 0.32, tw * 0.75)];
     const u = this.skyMat.uniforms;
     u.uHorizon.value.setRGB(hz[0], hz[1], hz[2], T.SRGBColorSpace); u.uZenith.value.setRGB(Z[0], Z[1], Z[2], T.SRGBColorSpace);
     u.uSunDir.value.set(dir[0], dir[1], dir[2]); u.uSunColor.value.setRGB(1, lerp(0.55, 0.92, clamp(el * 2, 0, 1)), lerp(0.3, 0.78, clamp(el * 2, 0, 1)), T.SRGBColorSpace);
     u.uStars.value = 1 - smooth(-0.15, 0.08, el);
     this.scene.fog.color.setRGB(hz[0], hz[1], hz[2], T.SRGBColorSpace);
-    this.hemi.color.setRGB(lerp(0.12, 0.72, dayf), lerp(0.16, 0.84, dayf), lerp(0.3, 1, dayf), T.SRGBColorSpace);
-    this.hemi.groundColor.setRGB(lerp(0.05, 0.42, dayf), lerp(0.05, 0.36, dayf), lerp(0.06, 0.25, dayf), T.SRGBColorSpace);
-    this.hemi.intensity = lerp(0.18, 1.15, dayf);
+    this.hemi.color.setRGB(lerp(0.52, 0.72, dayf), lerp(0.36, 0.84, dayf), lerp(0.85, 1, dayf), T.SRGBColorSpace);
+    this.hemi.groundColor.setRGB(lerp(0.32, 0.42, dayf), lerp(0.14, 0.36, dayf), lerp(0.36, 0.25, dayf), T.SRGBColorSpace);
+    this.hemi.intensity = lerp(0.95, 1.15, dayf);
     this.sun.color.setRGB(1, lerp(0.62, 0.95, clamp(el * 2.2, 0, 1)), lerp(0.4, 0.88, clamp(el * 2.2, 0, 1)), T.SRGBColorSpace);
     this.sun.intensity = 3.4 * Math.pow(Math.max(el, 0), 0.55);
     const f = this.sunFocus || (this.sunFocus = { x: 0, y: 0, z: 0 });
@@ -487,11 +487,11 @@ export class Scene3D {
     const night = el < -0.02;
     const lx = night ? -dir[0] : dir[0], ly = night ? -dir[1] : dir[1], lz = night ? -dir[2] : dir[2]; // moon opposite the sun
     this.sun.position.set(f.x + dir[0] * 260, f.y + Math.max(dir[1], 0.12) * 260, f.z + dir[2] * 260); this.sun.target.position.set(f.x, f.y, f.z);
-    this.moon.position.set(focus.x + lx * 100, focus.y + Math.abs(ly) * 100 + 20, focus.z + lz * 100); this.moon.intensity = 0.55 * (1 - dayf);
-    this.renderer.toneMappingExposure = lerp(1.25, 0.95, dayf);
-    this.mBuilding.emissiveIntensity = (1 - smooth(-0.05, 0.12, el)) * 1.6;
+    this.moon.position.set(focus.x + lx * 100, focus.y + Math.abs(ly) * 100 + 20, focus.z + lz * 100); this.moon.intensity = 1.5 * (1 - dayf); this.moon.color.setRGB(0.62, 0.66, 1.0, T.SRGBColorSpace);
+    this.renderer.toneMappingExposure = lerp(1.7, 0.95, dayf);
+    this.mBuilding.emissiveIntensity = (1 - smooth(-0.05, 0.12, el)) * 2.6;
     { const night = 1 - smooth(-0.1, 0.16, el); if (this.mLampPool) { this.mLampPool.opacity = night * 0.95; this.mLampHead.color.setRGB(lerp(0.42, 1.0, night), lerp(0.4, 0.88, night), lerp(0.36, 0.55, night)); } }
-    const ei = 0.12 + 0.88 * dayf;
+    const ei = 0.4 + 0.6 * dayf;
     if (Math.abs(ei - this.lastEnv) > 0.01) {
       this.lastEnv = ei;
       for (const e of this.envMats) e.m.envMapIntensity = e.base * ei;

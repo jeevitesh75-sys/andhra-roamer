@@ -580,7 +580,7 @@ function updateRemotes() {
     const s = net.sample(r, G.tmp.rs || (G.tmp.rs = {})); if (!s) continue;
     const spec = SPECS[r.veh] || SPECS.car, hl = spec.wheelbase / 2, sn = Math.sin(s.h), cs = Math.cos(s.h);
     const fy = w.heightAt(s.x + sn * hl, s.z + cs * hl), by = w.heightAt(s.x - sn * hl, s.z - cs * hl);
-    if (s.f & FLAG.FOOT) { sc.removeModel('r' + id); r.ph = (r.ph || 0) + 0.1 * (1 + Math.abs(s.v)); const cm = G.storyC && G.storyC.cine; const rl = G.net.story && G.net.story.roles && G.net.story.roles[id], R = rl && ROLES[rl]; G.chars.set('r' + id, { x: s.x, y: w.heightAt(s.x, s.z) + ((s.f & FLAG.PASS) ? 1.0 : 0), z: s.z, h: s.h, phase: r.ph, moving: (s.f & FLAG.PASS) ? 0 : Math.min(1.3, Math.abs(s.v) / 4.8), color: R ? R.shirt : r.color, pants: R ? R.pants : '#2c3e50', crouch: (s.f & 256) ? 0.6 : 0, gun: !!(s.f & 512), aim: !!(s.f & 512), flash: !!(s.f & FLAG.GUN), air: !!(s.f & FLAG.AIR), vis: !cm }); updateTag(id, r, s, w.heightAt(s.x, s.z) + 2.2, Math.hypot(s.x - me.x, s.z - me.z)); continue; }
+    if (s.f & FLAG.FOOT) { sc.removeModel('r' + id); r.ph = (r.ph || 0) + 0.1 * (1 + Math.abs(s.v)); const cm = G.storyC && G.storyC.cine; const rl = G.net.story && G.net.story.roles && G.net.story.roles[id], R = rl && ROLES[rl]; G.chars.set('r' + id, { x: s.x, y: w.heightAt(s.x, s.z) + ((s.f & FLAG.PASS) ? 1.0 : 0), z: s.z, h: s.h, phase: r.ph, moving: (s.f & FLAG.PASS) ? 0 : Math.min(1.3, Math.abs(s.v) / 4.8), color: R ? R.shirt : r.color, pants: R ? R.pants : '#2c3e50', rig: R && R.rig || 'casual', crouch: (s.f & 256) ? 0.6 : 0, gun: !!(s.f & 512), aim: !!(s.f & 512), flash: !!(s.f & FLAG.GUN), air: !!(s.f & FLAG.AIR), vis: !cm }); updateTag(id, r, s, w.heightAt(s.x, s.z) + 2.2, Math.hypot(s.x - me.x, s.z - me.z)); continue; }
     G.chars.remove('r' + id);
     const m = sc.model('r' + id, r.veh, r.color);
     sc.placeModel(m, { x: s.x, z: s.z, y: (fy + by) / 2, h: s.h, pitch: Math.atan((fy - by) / spec.wheelbase), roll: 0, steer: s.st * spec.maxSteer, brake: s.f & FLAG.BRAKE, lights: s.f & FLAG.LIGHTS, reverse: s.f & FLAG.REVERSE, signed: s.v });
@@ -713,7 +713,7 @@ function renderWorldExtras(dt, pose) {
   // stations
   for (const st of G.law.stations) { const near = Math.hypot(st.x - fx, st.z - fz) < 450, o = stMeshes.get(st.id); if (near && !o) stMeshes.set(st.id, stationMesh(st)); else if (!near && o) { sc.scene.remove(o.g); stMeshes.delete(st.id); } else if (o) { const on = (t * 3 | 0) % 2; o.l1.visible = !!on; o.l2.visible = !on; } }
   // local character
-  if (G.foot) { const f = G.foot, role = S.myRole && ROLES[S.myRole]; C.set('me', { x: f.x, y: f.y, z: f.z, h: f.h, s: f.s, phase: f.phase, moving: f.moving, air: f.lift > 0.15, crouch: f.crouch, color: role ? role.shirt : G.profile.color, pants: role ? role.pants : '#2c3e50', gun: f.shotT > 0 || !!G.dead, aim: f.shotT > 0, flash: G.shotFlash > 0, dead: G.dead ? Math.min(1, G.dead.t = (G.dead.t || 0) + dt * 2) : 0, vis: !cine }); } else C.remove('me');
+  if (G.foot) { const f = G.foot, role = S.myRole && ROLES[S.myRole]; C.set('me', { x: f.x, y: f.y, z: f.z, h: f.h, s: f.s, phase: f.phase, moving: f.moving, air: f.lift > 0.15, crouch: f.crouch, color: role ? role.shirt : G.profile.color, pants: role ? role.pants : '#2c3e50', rig: S.myRole === 'karthik' ? 'man2' : 'casual', gun: f.shotT > 0 || !!G.dead, aim: f.shotT > 0, flash: G.shotFlash > 0, dead: G.dead ? Math.min(1, G.dead.t = (G.dead.t || 0) + dt * 2) : 0, vis: !cine }); } else C.remove('me');
   G.shotFlash = Math.max(0, (G.shotFlash || 0) - dt);
   // officers + roaming patrols
   for (const o of G.law.officers) { if (Math.hypot(o.x - fx, o.z - fz) > 260) { C.remove('cop' + o.id); continue; } C.set('cop' + o.id, { x: o.x, y: w.heightAt(o.x, o.z), z: o.z, h: o.h, phase: o.phase, moving: o.moving, color: o.swat ? '#15171c' : '#2c4a8c', pants: o.swat ? '#15171c' : '#1b2a52', hat: o.swat ? 'helmet' : 'cap', swat: !!o.swat, gun: o.state === 'chase', aim: o.state === 'chase' && o.firing > 0, flash: o.firing > 0.05, dead: o.hp <= 0 ? 1 : 0, s: o.swat ? 1.1 : 1 }); }
@@ -721,10 +721,12 @@ function renderWorldExtras(dt, pose) {
   const live = new Set(); for (const r of G.law.roamers) { const key = 'lw' + r.id; live.add(key); const m = sc.model(key, r.type === 'bike' ? 'bike' : 'police', '#1d3a8a'); sc.placeModel(m, { x: r.x, z: r.z, y: r.y, h: r.h, pitch: 0, roll: 0, steer: 0, lights: true, signed: r.u }); }
   for (const k of [...sc.models.keys()]) if (k.startsWith('lw') && !live.has(k)) sc.removeModel(k);
   // gang members
-  if (S.gang.length) { for (const g of S.gang) { const L = S.look(g); C.set('g' + g.id, { x: g.x, y: w.heightAt(g.x, g.z), z: g.z, h: g.h, phase: g.phase, moving: g.mv, color: L.color, pants: L.pants, hat: L.hat, rifle: g.kind === 'boss', man: true, hatModel: g.kind === 'boss' ? 'top' : 'cowboy', gun: true, aim: g.fire > 0, dead: g.hp <= 0 ? 1 : 0, s: g.kind === 'boss' ? 1.25 : 1 }); g.fire = Math.max(0, (g.fire || 0) - dt); } }
+  if (S.gang.length) { for (const g of S.gang) { const L = S.look(g); C.set('g' + g.id, { x: g.x, y: w.heightAt(g.x, g.z), z: g.z, h: g.h, phase: g.phase, moving: g.mv, color: L.color, pants: L.pants, hat: L.hat, rifle: g.kind === 'boss', rig: g.kind === 'boss' || g.id % 2 ? 'man2' : 'casual', hatModel: g.kind === 'boss' ? 'top' : 'cowboy', gun: true, aim: g.fire > 0, dead: g.hp <= 0 ? 1 : 0, s: g.kind === 'boss' ? 1.25 : 1 }); g.fire = Math.max(0, (g.fire || 0) - dt); } }
   C.sweep('g'); 
   // cutscene actors
-  if (cine && S.cine.shotActors) { const sh = S.cine.shotActors, A = S.cine.A; (sh.actors || []).forEach(a => { const R = ROLES[a.id] || NPCS[a.id]; if (!R) return; const x = A.x + a.at[0], z = A.z + a.at[1]; C.set('cs_' + a.id, { x, y: w.heightAt(x, z), z, h: Math.atan2(-a.at[0] + (Math.random() * 0), -a.at[1]) + 0, color: R.shirt, pants: R.pants, hat: R.hat, man: R.hat === 'crown' || R.hat === 'bandana', hatModel: R.hat === 'crown' ? 'top' : 'cowboy', s: R.s || 1, phase: t * 2, moving: 0 }); }); (sh.props || []).forEach((p, i) => { const m = sc.model('csp' + i, 'car', p.color); sc.placeModel(m, { x: A.x + p.at[0], z: A.z + p.at[1], y: w.heightAt(A.x + p.at[0], A.z + p.at[1]), h: p.h, pitch: 0, roll: 0, steer: 0, lights: !!p.bar }); }); }
+  if (cine && S.cine.shotActors) { const sh = S.cine.shotActors, A = S.cine.A; (sh.actors || []).forEach(a => { const R = ROLES[a.id] || NPCS[a.id]; if (!R) return; let x = A.x + a.at[0], z = A.z + a.at[1], hd = Math.atan2(-a.at[0], -a.at[1]); const lv = sh.lovers ? sh.lovers.indexOf(a.id) : -1;
+      if (lv >= 0) { x = A.x + (lv ? 0.27 : -0.27) * (sh.pose === 'kiss' ? 0.85 : 1); z = A.z; hd = lv ? -Math.PI / 2 : Math.PI / 2; }
+      C.set('cs_' + a.id, { x, y: w.heightAt(x, z), z, h: hd, color: R.shirt, pants: R.pants, hat: R.hat, rig: R.rig, hatModel: R.hatModel, talk: sh.who === a.id, pose: lv >= 0 ? sh.pose : null, s: R.s || 1, phase: t * 2, moving: 0 }); }); (sh.props || []).forEach((p, i) => { const m = sc.model('csp' + i, 'car', p.color); sc.placeModel(m, { x: A.x + p.at[0], z: A.z + p.at[1], y: w.heightAt(A.x + p.at[0], A.z + p.at[1]), h: p.h, pitch: 0, roll: 0, steer: 0, lights: !!p.bar }); }); }
   C.sweep('cs_'); if (!cine) for (const k of [...sc.models.keys()]) if (k.startsWith('csp')) sc.removeModel(k);
   C.tick(dt);
 }
@@ -790,7 +792,7 @@ function updateAI(dt) {
   const seen = new Set();
   for (const role of free) {
     const a = G.ai && G.ai[role]; if (!a || a.riding) { dropTag('ai_' + role); continue; } seen.add(role); const R = ROLES[role], y = w.heightAt(a.x, a.z);
-    G.chars.set('ai_' + role, { x: a.x, y, z: a.z, h: a.h, phase: a.phase, moving: a.moving, color: R.shirt, pants: R.pants }); out.push({ x: a.x, z: a.z, color: R.color, r: 3.5 });
+    G.chars.set('ai_' + role, { x: a.x, y, z: a.z, h: a.h, phase: a.phase, moving: a.moving, color: R.shirt, pants: R.pants, rig: R.rig || 'casual' }); out.push({ x: a.x, z: a.z, color: R.color, r: 3.5 });
     updateTag('ai_' + role, { name: R.emoji + ' ' + R.short + ' (AI)', chat: '', chatAt: 0 }, a, y + 2.2, Math.hypot(a.x - P.x, a.z - P.z));
   }
   AI_ORDER.forEach(r => { if (!seen.has(r)) dropTag('ai_' + r); });

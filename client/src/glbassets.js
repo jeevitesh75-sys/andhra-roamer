@@ -12,7 +12,7 @@ export const FILES = {
   bikeA: 'bike_cruiser.glb', bikeB: 'bike_sport.glb', char: 'character.glb', pistol: 'pistol.glb', tree: 'tree.glb',
   swat: 'swat.glb', rifle: 'rifle.glb', club: 'club.glb', garage: 'garage.glb', tavern: 'tavern.glb', gas: 'gas_station.glb',
   bridgeA: 'bridge_a.glb', bridgeB: 'bridge_b.glb', phone: 'phone.glb',
-  man: 'man.glb', hatCowboy: 'hat_cowboy.glb', hatTop: 'hat_top.glb',
+  man: 'man.glb', womanA: 'woman_a.glb', womanB: 'woman_b.glb', casual: 'casual.glb', man2: 'man2.glb', hatCowboy: 'hat_cowboy.glb', hatTop: 'hat_top.glb',
 };
 
 /** static story-site models. size = target length (m) of the chosen dimension (dim 'xz' = longest ground side, 'all' = longest side overall).
@@ -214,6 +214,13 @@ export async function loadAssets(T, onProgress = () => {}) {
       const anims = gl.man.animations.map(c => { const n = c.clone(); n.tracks = n.tracks.filter(t => !/Hips\.position$/.test(t.name)); return n; });
       A.man = { scene: sc, anims, scale: CHAR_HEIGHT * 1.02 / h, footY: -b.min.y * CHAR_HEIGHT * 1.02 / h };
     } catch (e) { console.warn('man setup failed', e); }
+  }
+  A.rigs = {};   // new Quaternius characters: casual (Arjun, some gang), man2 (Karthik, the King, gang), womanA/womanB
+  for (const k of ['casual', 'man2', 'womanA', 'womanB']) {
+    const g = gl[k]; if (!g) continue;
+    try { const sc = g.scene; sc.updateMatrixWorld(true); const b = new T.Box3().setFromObject(sc), h = b.max.y - b.min.y; if (!(h > 0)) throw new Error('bad height');
+      A.rigs[k] = { scene: sc, anims: g.animations, scale: CHAR_HEIGHT * 1.02 / h, footY: -b.min.y * CHAR_HEIGHT * 1.02 / h }; }
+    catch (e) { console.warn('rig setup failed', k, e); }
   }
   A.hats = {};
   for (const [k, f] of [['cowboy', 'hatCowboy'], ['top', 'hatTop']]) if (gl[f]) { try { A.hats[k] = buildHat(T, gl[f]); } catch (e) { console.warn('hat setup failed', k, e); } }

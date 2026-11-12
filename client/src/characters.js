@@ -13,11 +13,14 @@ export class Characters {
   _mat(c) { let m = this.mats.get(c); if (!m) { m = new this.T.MeshStandardMaterial({ color: c, roughness: 0.85 }); this.mats.set(c, m); } return m; }
   /** rigged, animated glTF person (Quaternius). Returns null if the model is not available so the box rig is used. */
   _makeGlb(p) {
-    const A = this.assets, T = this.T; if (!A || !A.char || !A.SkeletonUtils) return null;
-    const src = p.man && A.man ? A.man : p.swat && A.swat ? A.swat : A.char, isSwat = src === A.swat, isMan = src === A.man;
+    const A = this.assets, T = this.T; if (!A || !A.SkeletonUtils || (!A.char && !A.rigs)) return null;
+    const rigKey = p.rig && A.rigs && A.rigs[p.rig] ? p.rig : null;
+    const src = rigKey ? A.rigs[rigKey] : p.swat && A.swat ? A.swat : A.char, isSwat = src === A.swat, isMan = false;
     const model = A.SkeletonUtils.clone(src.scene), g = new T.Group(), body = new T.Group(), k = src.scale; g.add(body); body.add(model); model.scale.setScalar(k);
     const mats = [], cache = new Map(), col = c => new T.Color(c);
-    const tint = { Shirt: p.color || '#2980b9', UnderShirt: new T.Color(p.color || '#2980b9').multiplyScalar(0.8), Pants: p.pants || '#2c3e50' }; if (p.skin) tint.Skin = p.skin;
+    let tint = { Shirt: p.color || '#2980b9', UnderShirt: new T.Color(p.color || '#2980b9').multiplyScalar(0.8), Pants: p.pants || '#2c3e50' };
+    if (rigKey) { const c = p.color || '#2980b9', q = p.pants || '#2c3e50', M = { man2: { Shirt: c, Pants: q, Socks: q }, casual: { White: c, LightBlue: q }, womanB: { Red: c }, womanA: {} }; tint = { ...(M[rigKey] || {}) }; }
+    if (p.skin) tint.Skin = p.skin;
     model.traverse(o => {
       if (!o.isMesh) return; o.castShadow = true; o.frustumCulled = false;
       const m = o.material; if (!m) return; let c = cache.get(m);
@@ -25,15 +28,16 @@ export class Characters {
       o.material = c;
     });
     const mixer = new T.AnimationMixer(model), actions = {};
-    for (const clip of src.anims) { const n = clip.name.includes('|') ? clip.name.split('|').pop() : clip.name; if (!actions[n]) actions[n] = mixer.clipAction(clip); }
+    for (const clip of src.anims) { let n = clip.name.includes('|') ? clip.name.split('|').pop() : clip.name; n = n.replace(/^Man_/, ''); n = { Walking: 'Walk', Running: 'Run' }[n] || n; if (!actions[n]) actions[n] = mixer.clipAction(clip); }
+    if (rigKey) actions.Attacking_Idle = actions.Idle_Gun_Pointing || actions.Idle_Gun || actions.Idle;
     if (isMan) { const w = Object.values(actions)[0]; if (w) { actions.Walk = actions.Run = actions.Idle = w; } }
     if (isSwat) { actions.Attacking_Idle = actions.Idle_Gun_Pointing || actions.Idle_Gun || actions.Attacking_Idle; }
     const gunSrc = (p.swat || p.rifle) && A.rifle ? A.rifle : A.pistol, rifle = gunSrc === A.rifle, gun = gunSrc ? gunSrc.clone(true) : null, flash = new T.Mesh(this.geo.flash, new T.MeshBasicMaterial({ color: 0xffd24a })); flash.visible = false;
     if (gun) { flash.position.set(0, rifle ? 0.05 : 0.04, rifle ? 0.55 : 0.22); flash.scale.setScalar(0.7); gun.add(flash); gun.visible = false; g.add(gun); }
-    const hand = findNode(model, 'Fist.R', 'mixamorig:RightHand', 'LowerArm.R');
+    const hand = findNode(model, 'Fist.R', 'mixamorig:RightHand', 'MiddleHand.R', 'RightHand', 'LowerArm.R', 'LowerArm_R');
     const hatMesh = (geo, c, x, y, z, sc) => { const o = new T.Mesh(geo, this._mat(c)); o.position.set(x, y, z); o.scale.setScalar(sc || 1); o.castShadow = true; body.add(o); return o; };
     const G = this.geo, hy = CHAR_TOP;
-    if (isMan) this._manHat(model, p);
+    if (p.hatModel && A.hats && A.hats[p.hatModel]) this._hatOn(model, p);
     else if (isSwat) { /* the SWAT model already wears its helmet and visor */ }
     else if (p.hat === 'cap') { hatMesh(G.cap, p.hatColor || '#1d2f63', 0, hy + 0.02, 0, 1.45); hatMesh(G.brim, '#111', 0, hy - 0.03, 0.27, 1.7); }
     else if (p.hat === 'helmet') { const h = hatMesh(G.cap, '#f5f5f5', 0, hy - 0.02, 0, 1.7); h.scale.set(1.9, 2.4, 1.9); }
@@ -42,7 +46,16 @@ export class Characters {
     this.scene.add(g);
     return { g, body, model, k, mixer, actions, cur: null, glb: true, man: isMan, mats, gun: gun || { visible: false }, hasGun: !!gun, hand, flash, flashT: 0, key: '', last: p, tmpV: new T.Vector3() };
   }
-  /** hat model on the head bone, kept upright; size from the head bone -> head-top distance */
+  /** hat on the head bone of a Quaternius rig: upright in world space, sized from the body height, brim just above the ears */
+  _hatOn(model, p) {
+    const A = this.assets, T = this.T, tpl = A.hats[p.hatModel]; const head = findNode(model, 'Head', 'mixamorig:Head'); if (!head) return;
+    model.updateMatrixWorld(true); const b = new T.Box3().setFromObject(model), H = b.max.y - b.min.y, hh = 0.17 * H, hp = new T.Vector3(), q = new T.Quaternion(), ws = new T.Vector3();
+    head.getWorldPosition(hp); head.getWorldQuaternion(q); head.getWorldScale(ws);
+    const hg = new T.Group(), hat = tpl.clone(true), w = hh * (p.hatModel === 'top' ? 1.35 : 1.9);
+    hg.quaternion.copy(q.invert()); hg.position.copy(head.worldToLocal(new T.Vector3(hp.x, b.max.y - 0.3 * hh, hp.z)));
+    hat.scale.setScalar(w / (ws.x || 1)); hg.add(hat); head.add(hg);
+  }
+  /** (old Mixamo rig) hat model on the head bone, kept upright; size from the head bone -> head-top distance */
   _manHat(model, p) {
     const A = this.assets, T = this.T, tpl = A.hats && A.hats[p.hatModel || 'cowboy']; if (!tpl) return;
     const head = findNode(model, 'mixamorig:Head'), top = findNode(model, 'mixamorig:HeadTop_End'); if (!head || !top) return;
@@ -50,6 +63,26 @@ export class Characters {
     head.getWorldPosition(a); top.getWorldPosition(b); const hh = a.distanceTo(b) || 0.5; head.getWorldQuaternion(q);
     const hg = new T.Group(), hat = tpl.clone(true), w = hh * (p.hatModel === 'top' ? 1.35 : 1.9);
     hg.quaternion.copy(q.invert()); hg.position.copy(top.position); hat.scale.setScalar(w); hat.position.y = -0.3 * hh; hg.add(hat); head.add(hg);
+  }
+  /** embrace: point both arms (upper arm + forearm) around the partner. Axis-agnostic: each bone is rotated in world space so that
+   *  the bone->child direction matches the wanted direction, so it works for every rig whatever its bone axes are. */
+  _embrace(r) {
+    const T = this.T; if (!r.arms) { r.arms = [];
+      for (const [u, l] of [['UpperArm.L', 'LowerArm.L'], ['UpperArm.R', 'LowerArm.R'], ['LeftArm', 'LeftForeArm'], ['RightArm', 'RightForeArm']]) { const up = findNode(r.model, u), lo = findNode(r.model, l), h = lo && lo.children.find(c => c.isBone); if (up && lo && h) r.arms.push({ up, lo, h }); }
+    }
+    if (!r.arms.length) return;
+    const pa = new T.Vector3(), pb = new T.Vector3(), cur = new T.Vector3(), q = new T.Quaternion(), bq = new T.Quaternion(), pq = new T.Quaternion(), gq = new T.Quaternion();
+    r.body.updateMatrixWorld(true); r.body.getWorldQuaternion(gq);
+    const aim = (bone, child, dir) => {
+      bone.updateWorldMatrix(true, false); child.updateWorldMatrix(true, false); bone.getWorldPosition(pa); child.getWorldPosition(pb); cur.copy(pb).sub(pa).normalize();
+      q.setFromUnitVectors(cur, dir); bone.getWorldQuaternion(bq); bq.premultiply(q); bone.parent.getWorldQuaternion(pq); bone.quaternion.copy(pq.invert().multiply(bq)); bone.updateMatrixWorld(true);
+    };
+    const kiss = r.pose === 'kiss';
+    for (const A of r.arms) {
+      A.up.getWorldPosition(pa); const s = Math.sign(r.body.worldToLocal(pa.clone()).x) || 1;   // +1 = arm on the +x side of the body
+      aim(A.up, A.lo, new T.Vector3(s * 0.3, -0.4, 0.86).normalize().applyQuaternion(gq));
+      aim(A.lo, A.h, new T.Vector3(-s * 0.78, kiss ? 0.38 : 0.02, 0.5).normalize().applyQuaternion(gq));
+    }
   }
   _play(r, name, ts = 1) {
     const a = r.actions[name] || r.actions.Idle; if (!a) return; a.timeScale = ts;
@@ -67,7 +100,12 @@ export class Characters {
     else if (mv > 0.9) { clip = 'Run'; ts = Math.max(0.8, Math.min(1.5, mv / 1.1)); }
     else if (mv > 0.05) { clip = 'Walk'; ts = Math.max(0.6, Math.min(1.6, mv / 0.55)); }
     else if (p.gun && p.aim) clip = 'Attacking_Idle';
+    if (p.talk && r.actions.Interact && mv < 0.05 && !(p.gun && p.aim)) clip = 'Interact';
+    else if (p.pose && r.actions.Idle_Neutral) clip = 'Idle_Neutral';
     this._play(r, clip, ts);
+    const now = performance.now() / 1000;   // cutscene acting: speaker sways and turns the shoulders, lovers lean in
+    r.body.rotation.set(p.pose ? (p.pose === 'kiss' ? 0.2 : 0.1) : 0, p.talk ? Math.sin(now * 1.6) * 0.14 : 0, p.pose ? Math.sin(now * 0.8) * 0.03 : (p.talk ? Math.sin(now * 2.1) * 0.03 : 0));
+    r.pose = p.pose || null;
     r.gun.visible = !!p.gun && r.hasGun;
     if (p.flash && r.hasGun) { r.flash.visible = true; r.flashT = 0.06; }
   }
@@ -116,7 +154,8 @@ export class Characters {
       if (r.flashT > 0 && (r.flashT -= dt) <= 0) r.flash.visible = false;
       if (!r.glb) continue;
       r.mixer.update(dt);
-      if (r.hasGun && r.gun.visible && r.hand) { r.hand.getWorldPosition(r.tmpV); r.g.worldToLocal(r.tmpV); r.gun.position.copy(r.tmpV); r.gun.position.z += 0.05; }
+      if (r.pose && r.g.visible !== false) { try { this._embrace(r); } catch (e) { r.pose = null; console.warn('embrace failed', e); } }
+      if (r.hasGun && r.gun.visible) { if (r.hand) { r.hand.getWorldPosition(r.tmpV); r.g.worldToLocal(r.tmpV); r.gun.position.copy(r.tmpV); r.gun.position.z += 0.05; } else r.gun.position.set(0.22, 1.15, 0.4); }
     }
   }
   /** remove every rig of this prefix that was not set() since the last call */

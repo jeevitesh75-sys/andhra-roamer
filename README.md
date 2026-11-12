@@ -89,12 +89,12 @@ Code-built buildings (`client/src/buildings.js`, no model files): Abandoned Fact
 ## v3n - Raghav's gang and The King (Mixamo man + hats)
 `man.glb` (rigged Mixamo man, one walk clip - played in place, frozen when standing, tipped over when dead), `hat_cowboy.glb`, `hat_top.glb`. Gang thugs/rivals wear the cowboy hat, the gang boss and The King (cutscenes) the top hat; Dasari/Pasha cutscene actors get the cowboy hat. Hats are attached to the head bone and sized from the head (`_manHat` in characters.js). Also fixed: hand-bone lookup now handles three's name sanitising (`Fist.R` -> `FistR`) so pistol/rifle follow the hand. Untested visually: hat height/size and man scale come from measured bounds.
 
-## v3o - installable app (PWA) / APK
-- Added `client/manifest.webmanifest`, `client/sw.js`, `client/icons/*`, linked from index.html; vercel.json serves the service worker without caching.
-- Install: open the Vercel site in Chrome -> menu -> Install app. APK: pwabuilder.com -> enter the Vercel URL -> Android -> download.
-- Service worker: code is network-first (pushes show up immediately), models/map data/three.js CDN are cached after first load. Untested on a real phone.
+## v3o - new characters, romance scenes, neon night
+- Characters (Quaternius): `casual.glb` (Arjun, half the gang), `man2.glb` (Karthik, The King, Dasari, Dev, other half of the gang), `woman_a.glb` (Lakshmi, Sravani), `woman_b.glb` (Rani). Chosen by `rig` in `ROLES`/`NPCS` (storydata.js) and in the `C.set(...)` calls in main.js. Arjun now wears maroon/dark blue, Karthik teal/charcoal (`shirt`/`pants` in ROLES). The King and the boss wear the top hat, thugs/Dasari/Pasha the cowboy hat.
+- Cutscene acting: the speaker sways and gestures (Interact clip where the rig has one), everyone else breathes/idles; lovers face each other and lean in.
+- Guns: the hand bone is now found on every rig (three renames `Fist.R` to `FistR`), with a chest-height fallback, so the pistol/rifle show while firing.
+- New story cutscenes (also added to `server/story.js`): `c2_queen` (The King and Rani, hug then kiss, right after the Chapter 2 intro) and `c3_sravani` (Karthik and Sravani, after "The Net Tightens", tied to his secret talks with Dev). Clothed, no explicit content. Arms are not posed around each other (no hug clip exists in the models).
+- Night: magenta/violet haze sky, brighter moon and ambient light, stronger window glow, higher exposure (scene.js `updateSky`).
+Untested visually. Tint targets (`White`/`LightBlue` on casual, `Shirt`/`Pants` on man2, `Red` on woman_b) are guesses from material names.
 
-## v3p - works offline
-- `sw.js` now precaches EVERYTHING listed in `client/precache.json` (code, three.js from the CDN, all map data, all 3D models, ~22 MB) on the first online visit; after that the game starts with no internet. Story mode runs locally when no server is reachable ("Playing offline"); multiplayer/voice still need internet.
-- IMPORTANT: when you add/rename/change files, run `node tools/make-precache.mjs` before `git push` (it rewrites precache.json and bumps its version so phones re-download).
-- Test: `node tests/offline-test.mjs` (Playwright; verifies cache + offline reload; the CDN three.js can't be reached in the sandbox, so a full offline game start is untested).
+v3p: hugs/kisses now pose the skeleton - `_embrace()` in characters.js rotates both arms of each lover around the partner (upper arm forward/out, forearm across the partner's back; higher for the kiss), whatever the rig's bone axes are. Untested visually; tune the direction vectors in `_embrace` if arms look off.

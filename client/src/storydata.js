@@ -11,15 +11,17 @@
 
 export const ROLE_ORDER = ['arjun', 'karthik'];
 export const ROLES = {
-  arjun: { name: 'Arjun', short: 'Arjun', title: 'The Leader', emoji: '🧠', color: '#f6c744', shirt: '#2b2b30', pants: '#14141a', blurb: 'Intelligent and brave. A natural leader with a criminal past he never talks about. Makes the big decisions.' },
-  karthik: { name: 'Karthik', short: 'Karthik', title: 'The Driver', emoji: '🏎️', color: '#8fa6ff', shirt: '#3b4a8f', pants: '#2c3e50', blurb: 'Arjun\'s best friend. Expert driver. Emotional, unpredictable... and hiding a connection to the police.' },
+  arjun: { name: 'Arjun', short: 'Arjun', title: 'The Leader', emoji: '🧠', color: '#f6c744', shirt: '#7a1f2b', pants: '#1c2230', rig: 'casual', blurb: 'Intelligent and brave. A natural leader with a criminal past he never talks about. Makes the big decisions.' },
+  karthik: { name: 'Karthik', short: 'Karthik', title: 'The Driver', emoji: '🏎️', color: '#8fa6ff', shirt: '#1f8a8a', pants: '#2a2a35', rig: 'man2', blurb: 'Arjun\'s best friend. Expert driver. Emotional, unpredictable... and hiding a connection to the police.' },
 };
 export const NPCS = {
-  king: { name: 'THE KING - Raghav', emoji: '👑', color: '#d4af37', shirt: '#0c0c0f', pants: '#0c0c0f', hat: 'crown', s: 1.08 },
-  dasari: { name: 'Dasari (Raghav\'s man)', emoji: '🕴️', color: '#d4af37', shirt: '#4a1212', pants: '#1b1b1b', hat: 'bandana' },
-  dev: { name: 'ACP Dev', emoji: '👮', color: '#6aa0ff', shirt: '#2c4a8c', pants: '#1b2a52', hat: 'cap', s: 1.05 },
-  pasha: { name: 'Pasha (Kondapalli Crew)', emoji: '🔪', color: '#ff6b6b', shirt: '#6b1f1f', pants: '#1b1b1b', hat: 'bandana' },
-  lakshmi: { name: 'Lakshmi', emoji: '👧', color: '#ff9ad5', shirt: '#b83a8a', pants: '#2c3e50' },
+  king: { name: 'THE KING - Raghav', emoji: '👑', color: '#d4af37', shirt: '#0c0c0f', pants: '#0c0c0f', hat: 'crown', hatModel: 'top', rig: 'man2', s: 1.08 },
+  dasari: { name: 'Dasari (Raghav\'s man)', emoji: '🕴️', color: '#d4af37', shirt: '#4a1212', pants: '#1b1b1b', hat: 'bandana', hatModel: 'cowboy', rig: 'man2' },
+  dev: { name: 'ACP Dev', emoji: '👮', color: '#6aa0ff', shirt: '#2c4a8c', pants: '#1b2a52', hat: 'cap', rig: 'man2', s: 1.05 },
+  pasha: { name: 'Pasha (Kondapalli Crew)', emoji: '🔪', color: '#ff6b6b', shirt: '#6b1f1f', pants: '#1b1b1b', hat: 'bandana', hatModel: 'cowboy', rig: 'casual' },
+  lakshmi: { name: 'Lakshmi', emoji: '👧', color: '#ff9ad5', shirt: '#b83a8a', pants: '#2c3e50', rig: 'womanA' },
+  rani: { name: 'Rani (the King\'s wife)', emoji: '💎', color: '#e8a0c8', shirt: '#7a0f2e', pants: '#1b1b1b', rig: 'womanB' },
+  sravani: { name: 'Sravani', emoji: '🌸', color: '#ff9ad5', shirt: '#d44a8a', pants: '#2c3e50', rig: 'womanA' },
   radio: { name: 'Police Radio', emoji: '📻', color: '#6aa0ff' },
   narrator: { name: '', emoji: '', color: '#ffffff' },
   anon: { name: 'Unknown number', emoji: '❓', color: '#bbbbbb' },
@@ -54,7 +56,7 @@ export const ANCHORS = {
 const C = (who, text) => ({ who, text });
 /** Build a cutscene from a cast and a list of [speaker, text] lines. Camera moves rotate through presets so every shot looks different. */
 function scene(cast, lines, opt = {}) {
-  const pos = { arjun: [-1.4, 0], karthik: [1.4, 0.4], king: [4, 4], dasari: [6, 5], dev: [4, 3.4], pasha: [4, 4], lakshmi: [0, 2.4] };
+  const pos = { arjun: [-1.4, 0], karthik: [1.4, 0.4], king: [4, 4], dasari: [6, 5], dev: [4, 3.4], pasha: [4, 4], lakshmi: [0, 2.4], rani: [3.2, 3.3], sravani: [0.4, 0.4] };
   const actors = cast.map(id => ({ id, at: (opt.at && opt.at[id]) || pos[id] || [0, 0] }));
   const presets = [(r, h) => ['orbit', r, h, 0.2, 0.6], (r, h) => ['orbit', r - 1, h - 0.3, -0.24, 2.4], (r, h) => ['fly', [-r * 2, h + 3, -r * 2], [-r * 0.5, h, -r * 0.6]], (r, h) => ['orbit', r - 2, h - 0.5, 0.3, 4.4], (r, h) => ['fly', [r * 2, h + 1, r], [r * 0.6, h - 0.4, r * 0.5]]];
   return lines.map(([who, text, extra], i) => {
@@ -119,6 +121,12 @@ export const CHAPTERS = [
         ['karthik', 'And if it goes wrong, I drive us out. I always do.'],
       ], { r: 9, at: { arjun: [-1.4, 0], karthik: [-0.2, 0.8], king: [3.4, 3.4], dasari: [5.5, 5] } }),
     ] },
+    { id: 'c2_queen', need: 'cut', title: 'The King\'s Queen', at: 'club', shots: scene(['king', 'rani'], [
+      ['rani', 'Raghav, the Kondapalli men were seen near the port again. Pasha is not afraid of you anymore.', { lovers: ['king', 'rani'], pose: 'hug' }],
+      ['king', 'Fear is a habit, Rani. I will teach it to him again. Tonight, the club is ours.', { lovers: ['king', 'rani'], pose: 'hug' }],
+      ['rani', 'Then come home alive. That is all I ask of this kingdom.', { lovers: ['king', 'rani'], pose: 'kiss' }],
+      ['narrator', 'Even a king has one weakness. Pasha is about to learn what it is.', { lovers: ['king', 'rani'], pose: 'kiss' }],
+    ], { r: 4.2, h: 1.7, look: [0, 1.5, 0] }) },
     { id: 'c2_meeting', need: 'all', title: 'Underworld Meeting', intro: [C('arjun', "Karthik, park near the godown gate. I will go in and listen. If I raise a hand, you drive like never before.")],
       obj: {
         arjun: [{ k: 'goto', at: 'meetGate', r: 30, veh: 'any', text: 'Go to the Port Godown gate for the underworld meeting' }, { k: 'hold', at: 'meetGate', r: 14, secs: 12, text: 'Stay close and listen to the meeting' }],
@@ -207,6 +215,12 @@ export const CHAPTERS = [
       ['arjun', 'You never panic, Karthik. You are always so calm. Strange, is it not?'],
       ['narrator', 'The first crack appears between two friends. Neither of them says it aloud.'],
     ], { r: 7, look: [0, 1.5, 0] }) },
+    { id: 'c3_sravani', need: 'cut', title: 'A Quiet Moment', at: 'town', shots: scene(['karthik', 'sravani'], [
+      ['sravani', 'Karthik, you came home. You look like you have not slept in days.', { lovers: ['karthik', 'sravani'], pose: 'hug' }],
+      ['karthik', 'Arjun is starting to doubt me, Sravani. And I cannot tell him why I talk to Dev.', { lovers: ['karthik', 'sravani'], pose: 'hug' }],
+      ['sravani', 'Then tell him the truth before someone else does. I will stand beside you, whatever happens.', { lovers: ['karthik', 'sravani'], pose: 'kiss' }],
+      ['narrator', 'For one night, Karthik forgets the lies. The truth, however, is already on its way.', { lovers: ['karthik', 'sravani'], pose: 'kiss' }],
+    ], { r: 4.2, h: 1.7, look: [0, 1.5, 0] }) },
   ] },
   /* =========================================================== 4 */
   { id: 4, name: 'THE SECRET', steps: [
