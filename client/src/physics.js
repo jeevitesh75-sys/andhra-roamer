@@ -93,7 +93,7 @@ export class Vehicle {
     a -= Math.sign(u) * Math.min(resist, Math.abs(u) / dt);
     let u2 = u + a * dt;
     // DRIFT: the separate Shift / DRIFT button, or brake (S, Space, BRAKE) + a steering key above ~30 km/h. Brakes are eased off so the slide keeps its speed.
-    const driftIn = !!(input.drift || input.handbrake || brake > 0.5) && u > 8 && Math.abs(input.steer) > 0.15 && s.maxSpeed > 30;
+    const driftIn = !!(input.drift || input.handbrake || brake > 0.5) && u > 6 && Math.abs(input.steer) > 0.15;
     if (brake > 0.001) {
       const db = ((s.brake * sp.grip) / (0.7 + 0.3 * mass)) * brake * (driftIn ? 0.25 : 1) * dt;
       if (Math.abs(u2) <= db) u2 = 0; else u2 -= Math.sign(u2) * db;
@@ -114,7 +114,10 @@ export class Vehicle {
     const latMax = (14 * sp.grip) * (1 + hb * 0.9) * (drift ? 2.2 : 1);
     const yawMax = latMax / Math.max(Math.abs(u), 2);
     yaw = clamp(yaw * (1 + hb * 0.45) * (drift ? 1.7 : 1), -yawMax, yawMax);
-    if (drift) yaw *= clamp(1.6 - (Math.abs(w) / Math.max(Math.abs(u), 3)) * 2.4, 0, 1);   // self-limiting: the slide angle tops out around 35 degrees
+    if (drift) {   // BGMI-style zero-cut drift: a fixed, quick flick of the nose (type-scaled), the tyres keep partial grip so the slide carves a tight corner
+      const tf = { car: 1, bike: 1.25, bus: 0.55, lorry: 0.5 }[this.type] || 1, sl = Math.abs(w) / Math.max(Math.abs(u), 3);
+      yaw = -clamp(input.steer, -1, 1) * 2.0 * tf * clamp(Math.abs(u) / 12, 0.45, 1) * clamp((2.6 - sl) / 0.8, 0, 1);
+    }
     this.h += yaw * dt;
     this.ay = yaw * u;
 
@@ -123,8 +126,10 @@ export class Vehicle {
     this.vx = sinH * u + cosH * w; this.vz = cosH * u - sinH * w;
     const sinN = Math.sin(this.h), cosN = Math.cos(this.h);
     let u3 = this.vx * sinN + this.vz * cosN, w3 = this.vx * cosN - this.vz * sinN;
-    const gripRate = 10 * sp.grip * (drift ? 0.045 : hb ? 0.13 : 1);
-    w3 *= Math.exp(-gripRate * dt);
+    const gripRate = 10 * sp.grip * (drift ? 0.07 : hb ? 0.13 : 1);
+    this.driftHold = drift ? 0.9 : Math.max(0, (this.driftHold || 0) - dt);
+    const w3old = w3; w3 *= Math.exp(-gripRate * dt);
+    if ((drift || this.driftHold > 0) && u3 > 0) u3 = Math.sqrt(u3 * u3 + w3old * w3old - w3 * w3);   // zero-cut exit: the slide's sideways speed is carried into the new heading instead of being lost
     this.skid = clamp(Math.abs(w3) / 4 + (hb && Math.abs(u3) > 6 ? 0.6 : 0), 0, 1);
     this.vx = sinN * u3 + cosN * w3; this.vz = cosN * u3 - sinN * w3;
 

@@ -104,7 +104,7 @@ export class Characters {
     else if (p.pose && r.actions.Idle_Neutral) clip = 'Idle_Neutral';
     this._play(r, clip, ts);
     const now = performance.now() / 1000;   // cutscene acting: speaker sways and turns the shoulders, lovers lean in
-    r.body.rotation.set(p.pose ? (p.pose === 'kiss' ? 0.2 : 0.1) : 0, p.talk ? Math.sin(now * 1.6) * 0.14 : 0, p.pose ? Math.sin(now * 0.8) * 0.03 : (p.talk ? Math.sin(now * 2.1) * 0.03 : 0));
+    r.body.rotation.set(p.pose ? (p.pose === 'kiss' ? 0.2 : 0.1) : (p.lean || 0), p.talk ? Math.sin(now * 1.6) * 0.14 : 0, p.pose ? Math.sin(now * 0.8) * 0.03 : (p.talk ? Math.sin(now * 2.1) * 0.03 : 0));
     r.pose = p.pose || null;
     r.gun.visible = !!p.gun && r.hasGun;
     if (p.flash && r.hasGun) { r.flash.visible = true; r.flashT = 0.06; }

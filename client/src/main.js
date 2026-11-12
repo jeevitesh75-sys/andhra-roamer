@@ -62,7 +62,7 @@ async function boot() {
 
 /* ------------------------------------------------------------ menu */
 function buildMenu() {
-  const s = G.save, prof = G.profile = { name: s.name || '', veh: s.veh || 'car', color: s.color || COLORS[0], region: new URLSearchParams(location.search).get('region') || s.region || 'vijayawada', city: s.city || '', room: s.room || new URLSearchParams(location.search).get('room') || '' };
+  const s = G.save, prof = G.profile = { name: s.name || '', veh: s.veh || 'car', color: s.color || COLORS[0], region: new URLSearchParams(location.search).get('region') || s.region || 'vijayawada', city: s.city || '', room: new URLSearchParams(location.search).get('room') || s.room || '' };
   $('name').value = prof.name; $('room').value = prof.room;
   const rg = $('region'); rg.innerHTML = ''; for (const r of REGIONS) { const o = document.createElement('option'); o.value = r.id; o.textContent = r.name; rg.appendChild(o); }
   rg.value = prof.region; rg.onchange = () => fillCities(rg.value); fillCities(prof.region);
@@ -122,7 +122,7 @@ async function startGame() {
   // network
   if (!G.net) G.net = new Net({ onStatus: onNetStatus, onChat: m => addChat(m.name, m.text), onJoin: r => { toast(r.name + ' joined'); if (G.voice && G.voice.on) G.voice.hello(r.id); }, onLeave: r => { toast(r.name + ' left'); G.scene.removeModel('r' + r.id); G.chars.remove('r' + r.id); dropTag(r.id); G.voice && G.voice.peerLeft(r.id); },
     onLeaveAll: () => { for (const k of [...G.scene.models.keys()]) if (k.startsWith('r')) G.scene.removeModel(k); clearTags(); }, onError: m => toast(m, 3500),
-    onWelcome: m => { G.lot.dyn.clear(); G.lot.taken = new Set(m.taken || []); for (const v of m.parked || []) G.lot.dyn.set(v.id, v); G.storyC.onState(m.story); },
+    onWelcome: m => { G.welcomeAt = performance.now(); G.autoJoined = false; G.early = new Set((m.players || []).map(q => q.id)); G.lot.dyn.clear(); G.lot.taken = new Set(m.taken || []); for (const v of m.parked || []) G.lot.dyn.set(v.id, v); G.storyC.onState(m.story); },
     onParkAdd: (v, by) => { if (by === G.net.id && G.myPark && G.myPark.startsWith('me~')) { const e = G.lot.dyn.get(G.myPark); G.lot.dyn.delete(G.myPark); G.lot.dyn.set(v.id, { ...(e || {}), ...v, mine: true }); G.myPark = v.id; } else G.lot.dyn.set(v.id, v); },
     onParkDel: (id, by) => { G.lot.dyn.delete(id); if (/^s\d+$/.test(id)) G.lot.taken.add(id); if (id === G.myPark && by !== G.net.id) { G.myPark = null; toast('Someone took your vehicle!', 2500); } },
     onEnter: onEnterReply, onStory: s => G.storyC.onState(s), onHost: () => {}, onEv: (k, d, from) => onEv(k, d, from) });
@@ -271,7 +271,9 @@ function onNetStatus(s, detail) {
   el.textContent = s === 'online' ? `Online · room ${detail}` : detail || s; $('menuStatus').textContent = el.textContent;
 }
 function closeModals() { for (const id of ['board', 'garage', 'bigmap', 'pause']) $(id).hidden = true; G.paused = false; }
-function togglePause(v) { closeModals(); $('pause').hidden = !v; G.paused = v; $('pauseInfo').textContent = G.net && G.net.status === 'online' ? `Room "${G.net.room}" - share the room code with friends. Ping ${Math.round(G.net.rtt)} ms.` : 'Offline.'; if (v) G.audio.update(0, 0, 0, G.veh.type); }
+function togglePause(v) { closeModals(); $('pause').hidden = !v; G.paused = v; const inv = `${location.origin}${location.pathname}?region=${encodeURIComponent(G.profile.region)}&room=${encodeURIComponent(G.profile.room || 'open')}`;
+  $('pauseInfo').textContent = G.net && G.net.status === 'online' ? `Room "${G.net.room}" (region ${G.profile.region}, code ${G.profile.room || 'open'}). Your friend must pick the SAME region and room code, or open this link (tap here to copy): ${inv}   Ping ${Math.round(G.net.rtt)} ms. Players here: ${G.net.remotes.size + 1}` : 'Offline.';
+  $('pauseInfo').onclick = () => { try { navigator.clipboard.writeText(inv); toast('Invite link copied', 1500); } catch (_) {} }; if (v) G.audio.update(0, 0, 0, G.veh.type); }
 function toggleMap() { const open = $('bigmap').hidden; closeModals(); $('bigmap').hidden = !open; if (open) { sizeBigMap(); drawBigMap(); } }
 function sizeBigMap() { const c = $('bigcanvas'), p = c.parentElement, r = p.getBoundingClientRect(); const hh = Math.max(200, window.innerHeight - 120), w = Math.max(240, r.width - 16), k = Math.min(1.5, window.devicePixelRatio || 1); c.style.height = hh + 'px'; c.style.width = w + 'px'; c.width = Math.round(w * k); c.height = Math.round(hh * k); G.map.fullRoads = G.map.fullRoadsG3 = null; }
 function toggleGarage() { const open = $('garage').hidden; closeModals(); $('garage').hidden = !open; }
@@ -606,7 +608,7 @@ function updateRemotes() {
 function updateTag(id, r, s, y, d) {
   let el = G.tags.get(id);
   if (!el) { el = document.createElement('div'); el.className = 'tag'; $('tags').appendChild(el); G.tags.set(id, el); el._name = ''; }
-  if (d > 320) { el.style.display = 'none'; return; }
+  if (d > 700) { el.style.display = 'none'; return; }
   const p = G.scene.toScreen(s.x, y, s.z, G.tmp.sp || (G.tmp.sp = {}));
   if (!p.visible) { el.style.display = 'none'; return; }
   const chat = performance.now() - r.chatAt < 6000 ? r.chat : '';
@@ -720,6 +722,7 @@ function stationMesh(st) {
   g.position.set(st.x, G.world.heightAt(st.x, st.z), st.z); g.rotation.y = st.th; G.scene.scene.add(g); return { g, l1, l2 };
 }
 function renderWorldExtras(dt, pose) {
+  friendFinder();
   const sc = G.scene, C = G.chars, S = G.storyC, cine = S && S.cine, w = G.world; const fx = G.foot ? G.foot.x : pose.x, fz = G.foot ? G.foot.z : pose.z, t = performance.now() / 1000;
   S.update(dt); updateAI(dt);
   G.lot.render(sc, fx, fz);
@@ -728,6 +731,8 @@ function renderWorldExtras(dt, pose) {
   for (const st of G.law.stations) { const near = Math.hypot(st.x - fx, st.z - fz) < 450, o = stMeshes.get(st.id); if (near && !o) stMeshes.set(st.id, stationMesh(st)); else if (!near && o) { sc.scene.remove(o.g); stMeshes.delete(st.id); } else if (o) { const on = (t * 3 | 0) % 2; o.l1.visible = !!on; o.l2.visible = !on; } }
   // local character
   if (G.foot) { const f = G.foot, role = S.myRole && ROLES[S.myRole]; C.set('me', { x: f.x, y: f.y, z: f.z, h: f.h, s: f.s, phase: f.phase, moving: f.moving, air: f.lift > 0.15, crouch: f.crouch, color: role ? role.shirt : G.profile.color, pants: role ? role.pants : '#2c3e50', rig: S.myRole === 'karthik' ? 'man2' : 'casual', gun: f.shotT > 0 || !!G.dead, aim: f.shotT > 0, flash: G.shotFlash > 0, dead: G.dead ? Math.min(1, G.dead.t = (G.dead.t || 0) + dt * 2) : 0, vis: !cine }); } else C.remove('me');
+  // the rider: the player sits on the bike (crouched model, leaning to the bars) instead of disappearing into it
+  if (!G.foot && G.veh.type === 'bike' && !cine) { const rl = S.myRole && ROLES[S.myRole], sh = Math.sin(pose.h), ch = Math.cos(pose.h); C.set('me_rider', { x: pose.x - sh * 0.14, y: pose.y + 0.1, z: pose.z - ch * 0.14, h: pose.h, s: 1, moving: 0, crouch: 1, lean: 0.38, color: rl ? rl.shirt : G.profile.color, pants: rl ? rl.pants : '#2c3e50', rig: S.myRole === 'karthik' ? 'man2' : 'casual', vis: true }); } else C.remove('me_rider');
   G.shotFlash = Math.max(0, (G.shotFlash || 0) - dt);
   // officers + roaming patrols
   for (const o of G.law.officers) { if (Math.hypot(o.x - fx, o.z - fz) > 260) { C.remove('cop' + o.id); continue; } C.set('cop' + o.id, { x: o.x, y: w.heightAt(o.x, o.z), z: o.z, h: o.h, phase: o.phase, moving: o.moving, color: o.swat ? '#15171c' : '#2c4a8c', pants: o.swat ? '#15171c' : '#1b2a52', hat: o.swat ? 'helmet' : 'cap', swat: !!o.swat, gun: o.state === 'chase', aim: o.state === 'chase' && o.firing > 0, flash: o.firing > 0.05, dead: o.hp <= 0 ? 1 : 0, s: o.swat ? 1.1 : 1 }); }
@@ -752,6 +757,23 @@ document.addEventListener('fullscreenchange', () => { $('fsBtn').innerHTML = doc
 function voiceState(s) { const b = $('micBtn'); const n = G.voice ? G.voice.count() : 0; b.textContent = s === 'on' ? '🎤' + (n ? ' ' + n : ' ON') : s === 'muted' ? '🔇' : '🎤'; b.style.background = s === 'on' ? 'rgba(46,204,113,.5)' : s === 'muted' ? 'rgba(231,76,60,.5)' : ''; if (s === 'denied') toast('Microphone permission denied', 3000); if (s === 'nosupport') toast('Voice chat is not supported in this browser', 3000); if (s === 'on') toast('Voice chat on. Friends who tap the mic can hear you. Tap again to mute.', 3500); }
 document.addEventListener('pointerdown', () => G.voice && G.voice.resume());
 function toggleMic() { if (!G.net || G.net.status !== 'online') { toast('Voice chat needs the online server (same room code as your friends)', 3000); return; } G.voice.toggle(); }
+/** show a compass arrow + distance to the nearest friend when they are out of sight, and (once, on joining) move next to a friend who was already in the room */
+function jumpNear(r, s) {
+  if (G.foot && !G.foot.anim) { G.foot.x = s.x + 2; G.foot.z = s.z + 1; G.foot.y = G.world.heightAt(G.foot.x, G.foot.z); }
+  else if (!G.foot) { G.veh.reset(s.x - Math.sin(s.h) * 9, s.z - Math.cos(s.h) * 9, s.h); G.camYaw = s.h; }
+  G.camInit = false; toast('Joined ' + r.name, 1800);
+}
+function friendFinder() {
+  let el = G.fndEl; if (!el) { el = G.fndEl = document.createElement('div'); el.style.cssText = 'position:fixed;left:50%;top:96px;transform:translateX(-50%);z-index:5;padding:6px 14px;border-radius:18px;background:rgba(10,12,30,.72);color:#fff;font:700 15px system-ui,sans-serif;pointer-events:none;display:none;white-space:nowrap'; el.innerHTML = '<span id="fndA" style="display:inline-block;margin-right:8px;color:#ff9ad5">\u27a4</span><span id="fndT"></span>'; document.body.appendChild(el); }
+  const net = G.net; if (!net || net.status !== 'online' || !net.remotes.size || !G.running) { el.style.display = 'none'; return; }
+  const P = G.foot || G.veh; let best = null, bd = 1e18;
+  for (const r of net.remotes.values()) { const s = net.sample(r, {}); if (!s) continue; const d = Math.hypot(s.x - P.x, s.z - P.z); if (d < bd) { bd = d; best = { r, s }; } }
+  if (!best) { el.style.display = 'none'; return; }
+  if (!G.autoJoined && G.early && G.early.has(best.r.id) && performance.now() - (G.welcomeAt || 0) < 30000) { G.autoJoined = true; if (bd > 400 && !(G.storyC && G.storyC.cine)) { jumpNear(best.r, best.s); bd = 12; } }
+  if (bd < 120) { el.style.display = 'none'; return; }
+  const yaw = G.camYaw + G.orbit, fx = Math.sin(yaw), fz = Math.cos(yaw), dx = best.s.x - P.x, dz = best.s.z - P.z, rel = Math.atan2(dx * -Math.cos(yaw) + dz * Math.sin(yaw), dx * fx + dz * fz);
+  el.style.display = 'block'; el.querySelector('#fndA').style.transform = `rotate(${rel}rad)`; el.querySelector('#fndT').textContent = best.r.name + ' - ' + (bd >= 1000 ? (bd / 1000).toFixed(1) + ' km' : Math.round(bd) + ' m') + (bd > 1500 ? ' (press TEAM to jump)' : '');
+}
 function teamJump() {
   if (!G.net || G.net.status !== 'online' || !G.net.remotes.size) { toast('No friends in this room yet. Share your room code.', 2500); return; }
   const P = G.foot || G.veh; let best = null, bd = 1e18;

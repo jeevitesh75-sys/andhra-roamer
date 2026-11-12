@@ -102,3 +102,11 @@ v3p: hugs/kisses now pose the skeleton - `_embrace()` in characters.js rotates b
 ## v3q - drifting and PC camera
 - Drift: hold brake (S, Space or the touch BRAKE) and steer, or hold Shift (PC) / the purple DRIFT button (touch) while turning above ~30 km/h in a car/bike. The tyres let go, the car slides up to ~35 degrees and keeps its speed (the handbrake/Space still brakes into a slide). Skid sound is on already. `drift` in physics.js, tested in physics-test.mjs.
 - Camera on PC: mouse listeners moved from the canvas to the whole document (HUD layers were eating them); drag with either mouse button, or click the scene once to capture the mouse (Esc releases) and just move it. Q/E or [ ] also turn the camera. Mouse wheel still zooms.
+
+## v3s - zero-cut drift for every vehicle + bike rider
+- Drift (brake + steer, Shift or the DRIFT button) is now a BGMI-style zero-cut for car, bike, bus and lorry: a quick type-scaled flick of the nose, a partial-grip slide, and the sideways speed is carried into the new heading on exit (see `drift` / `driftHold` in physics.js, tests in physics-test.mjs). Tune `2.0 * tf`, the `tf` table and `drift ? 0.07` there.
+- The player is now visible on bikes: a crouched, leaning rider rig (`me_rider` in main.js renderWorldExtras). Other players' bikes still show no rider.
+
+## v3t - finding your friend in a room
+- The room name is `<region>-<code>`, so two players on different regions are in different rooms even with the same code. Pause menu now shows region + code and an invite link (tap to copy); `?region=..&room=..` in the URL now overrides the saved room.
+- Players who pick different start cities spawn far apart: a compass arrow + distance to the nearest friend shows on screen when they are out of sight, the second player to join is moved next to the friend already in the room (once, within 30 s of joining), name tags are visible up to 700 m, and TEAM still jumps to a friend.

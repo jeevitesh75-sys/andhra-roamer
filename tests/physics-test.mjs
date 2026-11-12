@@ -115,4 +115,7 @@ w = real;
     const v = new Vehicle('car', flat()); v.reset(start.x, start.z, start.h); v.vx = Math.sin(v.h) * 26; v.vz = Math.cos(v.h) * 26; let mx = 0; for (let i = 0; i < 60; i++) { v.step(FIXED_DT, inp); mx = Math.max(mx, Math.abs(v.w)); }
     assert(mx > 3, 'brake+steer slides: ' + mx.toFixed(1)); }
   console.log('ok   brake + steer drift'); }
+for (const [type, sp, minTurn] of [['car', 26, 80], ['bike', 26, 80], ['bus', 18, 45], ['lorry', 16, 40]]) {   // zero-cut: sharp corner in about a second, speed carried out of it
+  const v = new Vehicle(type, flat()); v.reset(start.x, start.z, 0); v.vx = 0; v.vz = sp; for (let i = 0; i < 150; i++) v.step(FIXED_DT, { throttle: 1, steer: 1, brake: 0, handbrake: false, drift: i < 60 });
+  const turn = Math.abs(v.h) * 57.3; assert(turn > minTurn, type + ' zero-cut turn ' + turn.toFixed(0) + ' deg'); assert(v.u > sp * 0.6, type + ' exit speed ' + v.u.toFixed(1)); console.log('ok   zero-cut', type, turn.toFixed(0) + ' deg, exit ' + v.u.toFixed(1)); }
 console.log('ALL PHYSICS TESTS PASSED');
