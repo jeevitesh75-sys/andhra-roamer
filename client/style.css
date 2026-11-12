@@ -187,3 +187,4 @@ body.is-touch #wpBox{top:6px;left:50%;max-width:42vw}
 #hudBar button{padding:7px 12px;border-radius:10px;border:0;background:#26324a;color:#fff;font-weight:700}
 #hudBar #hudDone{background:#1e9d5a}
 #hudBar input{width:140px}
+.is-touch #touch .tr .drift{grid-column:1 / span 2;grid-row:3;height:42px;font-size:14px;background:rgba(160,90,255,.35)}

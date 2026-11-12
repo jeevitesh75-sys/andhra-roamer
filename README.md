@@ -98,3 +98,7 @@ Code-built buildings (`client/src/buildings.js`, no model files): Abandoned Fact
 Untested visually. Tint targets (`White`/`LightBlue` on casual, `Shirt`/`Pants` on man2, `Red` on woman_b) are guesses from material names.
 
 v3p: hugs/kisses now pose the skeleton - `_embrace()` in characters.js rotates both arms of each lover around the partner (upper arm forward/out, forearm across the partner's back; higher for the kiss), whatever the rig's bone axes are. Untested visually; tune the direction vectors in `_embrace` if arms look off.
+
+## v3q - drifting and PC camera
+- Drift: hold brake (S, Space or the touch BRAKE) and steer, or hold Shift (PC) / the purple DRIFT button (touch) while turning above ~30 km/h in a car/bike. The tyres let go, the car slides up to ~35 degrees and keeps its speed (the handbrake/Space still brakes into a slide). Skid sound is on already. `drift` in physics.js, tested in physics-test.mjs.
+- Camera on PC: mouse listeners moved from the canvas to the whole document (HUD layers were eating them); drag with either mouse button, or click the scene once to capture the mouse (Esc releases) and just move it. Q/E or [ ] also turn the camera. Mouse wheel still zooms.

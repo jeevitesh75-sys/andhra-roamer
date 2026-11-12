@@ -92,25 +92,29 @@ export class Vehicle {
     const resist = (0.015 * 9.81 + 0.0009 * Math.abs(u) * Math.abs(u) / mass) * sp.drag;
     a -= Math.sign(u) * Math.min(resist, Math.abs(u) / dt);
     let u2 = u + a * dt;
+    // DRIFT: the separate Shift / DRIFT button, or brake (S, Space, BRAKE) + a steering key above ~30 km/h. Brakes are eased off so the slide keeps its speed.
+    const driftIn = !!(input.drift || input.handbrake || brake > 0.5) && u > 8 && Math.abs(input.steer) > 0.15 && s.maxSpeed > 30;
     if (brake > 0.001) {
-      const db = ((s.brake * sp.grip) / (0.7 + 0.3 * mass)) * brake * dt;
+      const db = ((s.brake * sp.grip) / (0.7 + 0.3 * mass)) * brake * (driftIn ? 0.25 : 1) * dt;
       if (Math.abs(u2) <= db) u2 = 0; else u2 -= Math.sign(u2) * db;
     }
-    if (input.handbrake) { const dh = 7 * dt; if (Math.abs(u2) <= dh) u2 = 0; else u2 -= Math.sign(u2) * dh * 0.6; }
+    if (input.handbrake && !driftIn) { const dh = 7 * dt; if (Math.abs(u2) <= dh) u2 = 0; else u2 -= Math.sign(u2) * dh * 0.6; }
     // coasting to a stop on gentle slopes
     if (Math.abs(u2) < 0.08 && Math.abs(drive) < 0.01 && Math.abs(slope) < 0.04) u2 = 0;
     this.ax = (u2 - u) / dt;
     u = u2;
 
     // ---- steering (bicycle model, speed-sensitive, grip-limited) ----
-    const target = clamp(input.steer, -1, 1) * s.maxSteer / (1 + (Math.abs(u) / s.steerSpeed) ** 2);
+    const target = clamp(input.steer, -1, 1) * s.maxSteer * (driftIn ? 2.4 : 1) / (1 + (Math.abs(u) / s.steerSpeed) ** 2);
     const sr = 6.5 * dt;                                    // steering wheel rate limit
     this.steerAngle += clamp(target - this.steerAngle, -sr, sr);
     let yaw = -(u / s.wheelbase) * Math.tan(this.steerAngle);
-    const hb = input.handbrake ? 1 : 0;
-    const latMax = (14 * sp.grip) * (1 + hb * 0.9);
+    const drift = driftIn;
+    const hb = (input.handbrake || drift) ? 1 : 0;
+    const latMax = (14 * sp.grip) * (1 + hb * 0.9) * (drift ? 2.2 : 1);
     const yawMax = latMax / Math.max(Math.abs(u), 2);
-    yaw = clamp(yaw * (1 + hb * 0.45), -yawMax, yawMax);
+    yaw = clamp(yaw * (1 + hb * 0.45) * (drift ? 1.7 : 1), -yawMax, yawMax);
+    if (drift) yaw *= clamp(1.6 - (Math.abs(w) / Math.max(Math.abs(u), 3)) * 2.4, 0, 1);   // self-limiting: the slide angle tops out around 35 degrees
     this.h += yaw * dt;
     this.ay = yaw * u;
 
@@ -119,7 +123,7 @@ export class Vehicle {
     this.vx = sinH * u + cosH * w; this.vz = cosH * u - sinH * w;
     const sinN = Math.sin(this.h), cosN = Math.cos(this.h);
     let u3 = this.vx * sinN + this.vz * cosN, w3 = this.vx * cosN - this.vz * sinN;
-    const gripRate = 10 * sp.grip * (hb ? 0.13 : 1);
+    const gripRate = 10 * sp.grip * (drift ? 0.045 : hb ? 0.13 : 1);
     w3 *= Math.exp(-gripRate * dt);
     this.skid = clamp(Math.abs(w3) / 4 + (hb && Math.abs(u3) > 6 ? 0.6 : 0), 0, 1);
     this.vx = sinN * u3 + cosN * w3; this.vz = cosN * u3 - sinN * w3;

@@ -105,4 +105,14 @@ w = real;
   v.vx = Math.sin(p0.h) * 8; v.vz = Math.cos(p0.h) * 8; run(v, 6, { throttle: 1, steer: 0, brake: 0, handbrake: false });
   console.log('loaded lorry full throttle on ghat start: speed', (v.u * 3.6).toFixed(0), 'km/h, pitch', (v.pitch * 57.3).toFixed(1), 'deg');
 }
+// drift (Shift): sideways slip while turning, but keeps its speed (unlike the handbrake)
+{ const mk = () => { const v = new Vehicle('car', flat()); v.reset(start.x, start.z, start.h); v.vx = Math.sin(v.h) * 26; v.vz = Math.cos(v.h) * 26; return v; };
+  const a = mk(), b = mk(); let slipA = 0, slipB = 0;
+  for (let i = 0; i < 90; i++) { a.step(FIXED_DT, { throttle: 1, steer: 0.8, brake: 0, handbrake: false, drift: true }); b.step(FIXED_DT, { throttle: 1, steer: 0.8, brake: 0, handbrake: false, drift: false }); slipA = Math.max(slipA, Math.abs(a.w)); slipB = Math.max(slipB, Math.abs(b.w)); }
+  assert(slipA > slipB * 1.5 && slipA > 3, 'drift slides more than normal steering: ' + slipA.toFixed(2) + ' vs ' + slipB.toFixed(2)); assert(a.speed > 12, 'drift keeps speed: ' + a.speed.toFixed(1)); console.log('ok   drift slip', slipA.toFixed(2), 'vs', slipB.toFixed(2), 'speed', a.speed.toFixed(1)); }
+{ // brake + steer also drifts (S / Space / touch BRAKE with A/D)
+  for (const inp of [{ throttle: 0, steer: 0.8, brake: 1, handbrake: false }, { throttle: 1, steer: 0.8, brake: 0, handbrake: true }, { throttle: -1, steer: 0.8, brake: 0, handbrake: false }]) {
+    const v = new Vehicle('car', flat()); v.reset(start.x, start.z, start.h); v.vx = Math.sin(v.h) * 26; v.vz = Math.cos(v.h) * 26; let mx = 0; for (let i = 0; i < 60; i++) { v.step(FIXED_DT, inp); mx = Math.max(mx, Math.abs(v.w)); }
+    assert(mx > 3, 'brake+steer slides: ' + mx.toFixed(1)); }
+  console.log('ok   brake + steer drift'); }
 console.log('ALL PHYSICS TESTS PASSED');

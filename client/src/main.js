@@ -176,11 +176,25 @@ function initInput() {
   addEventListener('blur', () => { G.keys = {}; });
   { const look = new Map(); let pinch = 0;
     const cvs = $('game');
-    cvs.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return; look.set(e.pointerId, { x: e.clientX, y: e.clientY }); try { cvs.setPointerCapture(e.pointerId); } catch (_) {} G.looking = true; });
-    const up = e => { look.delete(e.pointerId); if (!look.size) { G.looking = false; G.lastDrag = performance.now(); } };
-    cvs.addEventListener('pointerup', up); cvs.addEventListener('pointercancel', up);
-    cvs.addEventListener('contextmenu', e => e.preventDefault());
-    cvs.addEventListener('pointermove', e => { const p = look.get(e.pointerId); if (!p) return; const k = e.pointerType === 'mouse' ? 0.006 : G.foot ? 0.0055 : 0.008; G.orbit -= (e.clientX - p.x) * k; G.orbitY = clamp(G.orbitY + (e.clientY - p.y) * 0.03, -2.5, 9); p.x = e.clientX; p.y = e.clientY; G.lastDrag = performance.now(); G.freeLook = true; });
+    // Camera look on PC: listen on the whole document (HUD layers used to swallow the events), drag with either mouse button,
+    // or click once on the scene to capture the mouse (Esc releases it) and just move it. Q / E (or [ ]) also turn the camera.
+    const uiTarget = t => !!(t && t.closest && t.closest('button, input, select, textarea, a, label, canvas#minimap, #touch, #footBtns, .modal, [role=dialog], #hudRoot .panel'));
+    const rot = (dx, dy, mouse) => { const k = mouse ? 0.0042 : G.foot ? 0.0055 : 0.008; G.orbit -= dx * k; G.orbitY = clamp(G.orbitY + dy * 0.03, -2.5, 9); G.lastDrag = performance.now(); G.freeLook = true; };
+    document.addEventListener('pointerdown', e => {
+      if (!G.running || modalOpen() || uiTarget(e.target)) return; if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2) return;
+      look.set(e.pointerId, { x: e.clientX, y: e.clientY }); G.looking = true;
+      if (e.pointerType === 'mouse' && e.button === 0 && !document.pointerLockElement && cvs.requestPointerLock) { try { const r = cvs.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (_) {} }
+    });
+    const up = e => { look.delete(e.pointerId); if (!look.size && !document.pointerLockElement) { G.looking = false; G.lastDrag = performance.now(); } };
+    document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
+    document.addEventListener('pointerlockchange', () => { G.looking = !!document.pointerLockElement; G.lastDrag = performance.now(); if (G.looking) toast('Mouse look on - press Esc to release', 1600); });
+    document.addEventListener('contextmenu', e => { if (e.target === cvs) e.preventDefault(); });
+    document.addEventListener('pointermove', e => {
+      if (!G.running || modalOpen()) return;
+      if (document.pointerLockElement) { rot(e.movementX || 0, e.movementY || 0, true); return; }
+      const p = look.get(e.pointerId); if (!p) return; rot(e.clientX - p.x, e.clientY - p.y, e.pointerType === 'mouse'); p.x = e.clientX; p.y = e.clientY;
+    });
+    addEventListener('keydown', e => { if (typing() || !G.running) return; if (e.code === 'KeyQ' || e.code === 'BracketLeft') { G.orbit += 0.18; G.lastDrag = performance.now(); } if (e.code === 'KeyE' || e.code === 'BracketRight') { G.orbit -= 0.18; G.lastDrag = performance.now(); } });
   }
   $('game').addEventListener('wheel', e => { G.zoom = clamp(G.zoom * (e.deltaY > 0 ? 1.08 : 0.92), 0.6, 1.9); }, { passive: true });
   addEventListener('resize', () => G.scene && G.scene.resize());
@@ -224,7 +238,7 @@ function readInput(dt) {
   const target = (right ? 1 : 0) - (left ? 1 : 0);
   G.steer += (target - G.steer) * Math.min(1, dt * (target === 0 ? 9 : 5.5));
   if (G.paused || modalOpen()) return { throttle: 0, steer: 0, brake: 0.6, handbrake: false };
-  return { throttle: (up ? 1 : 0) - (down ? 1 : 0), steer: G.steer, brake: T.brake ? 1 : 0, handbrake: !!K.Space };
+  return { throttle: (up ? 1 : 0) - (down ? 1 : 0), steer: G.steer, brake: T.brake ? 1 : 0, handbrake: !!K.Space, drift: !!(K.ShiftLeft || K.ShiftRight || T.drift) };
 }
 
 /* ------------------------------------------------------------ HUD / UI */
