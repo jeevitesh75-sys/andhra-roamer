@@ -410,12 +410,13 @@ export class Scene3D {
   }
   /* ---- roof gun + tracers ---- */
   attachGun(m, type) {
-    if (m.gun) return m.gun; const T = this.T, o = m.mount || { car: [0, 1.55, -0.3], bus: [0, 3.25, 0.5], lorry: [0, 3.1, 1.2] }[type] || [0, 1.6, 0];
+    if (m.gun) return m.gun; const T = this.T, o = (m.mount ? m.mount.slice() : null) || { car: [0, 1.55, -0.3], bus: [0, 3.25, 0.5], lorry: [0, 3.1, 1.2] }[type] || [0, 1.6, 0];
+    if (!m.mount) o[0] = -0.85; if (m.mount) o[0] = -0.85, o[1] = Math.max(1.0, o[1] - 0.45), o[2] = 0.4;
     const yawG = new T.Group(), pitchG = new T.Group(), mat = new T.MeshStandardMaterial({ color: 0x2b2f36 }), mat2 = new T.MeshStandardMaterial({ color: 0x555b66 });
     const base = new T.Mesh(new T.CylinderGeometry(0.32, 0.4, 0.22, 10), mat), body = new T.Mesh(new T.BoxGeometry(0.34, 0.3, 0.7), mat2), barrel = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 1.1, 8), mat);
     barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0, 0.85); body.position.set(0, 0, 0.1); pitchG.position.y = 0.3; pitchG.add(body, barrel);
-    const flash = new T.Mesh(new T.SphereGeometry(0.16, 6, 6), new T.MeshBasicMaterial({ color: 0xffd24a })); flash.position.set(0, 0, 1.45); flash.visible = false; pitchG.add(flash);
-    yawG.add(base, pitchG); yawG.position.set(o[0], o[1], o[2]); m.group.add(yawG); m.gun = { yawG, pitchG, flash, muzzleH: o[1] + 0.3, z: o[2], flashT: 0 }; return m.gun;
+    const flash = new T.Mesh(new T.SphereGeometry(0.16, 6, 6), new T.MeshBasicMaterial({ color: 0xffd24a })); flash.position.set(0, 0, 0.9); flash.visible = false; pitchG.add(flash);
+    base.visible = body.visible = barrel.visible = false; yawG.add(base, pitchG); yawG.position.set(o[0], o[1], o[2]); m.group.add(yawG); m.gun = { yawG, pitchG, flash, muzzleH: o[1] + 0.3, z: o[2], flashT: 0 }; return m.gun;
   }
   aimGun(m, worldYaw, pitch, carH) { const g = m.gun; if (!g) return; g.yawG.rotation.y = worldYaw - carH; g.pitchG.rotation.x = -pitch; }
   gunFlash(m) { if (m.gun) { m.gun.flash.visible = true; m.gun.flashT = 0.05; } }
@@ -441,9 +442,9 @@ export class Scene3D {
     const roads = w.trafficRoads || w.roads.filter(r => r.kind !== 'ghat');
     const colors = ['#e74c3c', '#f1c40f', '#ecf0f1', '#3498db', '#2ecc71', '#e67e22', '#9b59b6', '#bdc3c7', '#1abc9c', '#c0392b'];
     const near = roads.filter(r => { const x = r.pts[0], z = r.pts[1]; for (const c of w.cities) if ((c.x - x) ** 2 + (c.z - z) ** 2 < 7000 * 7000) return true; return false; }), pool = near.length > 40 ? near : roads;
-    for (let i = 0; i < 280; i++) {
+    for (let i = 0; i < 480; i++) {
       const road = pool[Math.floor(rnd() * pool.length)], r = rnd();
-      const type = r < 0.38 ? 'car' : r < 0.72 ? 'bike' : r < 0.86 ? 'bus' : 'lorry';
+      const type = r < 0.5 ? 'car' : r < 0.78 ? 'bike' : r < 0.9 ? 'bus' : 'lorry';
       const speed = type === 'car' ? 17 + rnd() * 10 : type === 'bike' ? 15 + rnd() * 9 : type === 'bus' ? 13 + rnd() * 6 : 11 + rnd() * 6;
       this.npcs.push({ id: i, road, s0: rnd() * road.len * 2, speed, type, color: colors[Math.floor(rnd() * colors.length)] });
     }

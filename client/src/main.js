@@ -641,7 +641,7 @@ function updateHud(dt, info, serverSec) {
   if (st && v.speed < 3) { pr.hidden = false; pr.textContent = v.fuel >= v.spec.tank - 0.2 ? 'Tank full' : (G.touch.enabled ? `Hold FUEL to refuel  (${rs(FUEL_PRICE)}/L)` : `Hold F to refuel  (${rs(FUEL_PRICE)}/L)`); }
   else if (v.fuel <= 0.2) { pr.hidden = false; pr.textContent = 'Out of fuel! Press R to reset to road'; }
   else pr.hidden = true;
-  $('hpBar').style.width = G.hp + '%'; $('hpTxt').textContent = Math.round(G.hp); $('arBar').style.width = '0%'; $('weapon').textContent = G.foot ? 'PISTOL' : 'ROOF GUN';
+  $('hpBar').style.width = G.hp + '%'; $('hpTxt').textContent = Math.round(G.hp); $('arBar').style.width = '0%'; $('weapon').textContent = 'PISTOL';
   { const ep = $('enterPrompt'), eb = $('enterBtn'); let n = null, rc = null; if (G.foot && !G.foot.anim && !G.dead && !G.ride) { n = G.lot.nearest(G.foot.x, G.foot.z); if (!n) rc = rideCandidate(); } ep.hidden = !n && !rc && !G.ride; if (n) ep.textContent = `${G.touch.enabled ? 'Tap ENTER' : 'Press E'} to get into the ${SPECS[n.e.type].label}`; else if (rc) ep.textContent = `${G.touch.enabled ? 'Tap ENTER' : 'Press E'} to ride with ${rc.r.name}`; else if (G.ride) ep.textContent = 'Riding - press E to get off'; eb.hidden = !(n || rc || G.ride) || !G.touch.enabled; }
   if (G.storyC) { G.storyC.hud(); const L = G.law.lastRadio; if (L && G.lastRadioT !== L.t) { G.lastRadioT = L.t; showRadio(L.text); } }
   if (!$('players').hidden) renderPlayers();

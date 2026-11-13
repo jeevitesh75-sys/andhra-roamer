@@ -66,7 +66,7 @@ export function createOsmWorld(data) {
       if (d2 < bd) { bd = d2; bs = s; bt = t; }
     }
     if (bs < 0) return null;
-    const r = roads[sRoad[bs]]; NR.d = Math.sqrt(bd); NR.road = r; NR.i = sIdx[bs]; NR.t = bt; NR.halfW = r.halfW; NR.y = 0; return NR;
+    const r = roads[sRoad[bs]]; NR.d = Math.sqrt(bd); NR.road = r; NR.i = sIdx[bs]; NR.t = bt; NR.halfW = r.halfW; NR.y = r.y[NR.i] + (r.y[NR.i + 1] - r.y[NR.i]) * bt; return NR;
   }
   /** nearest road point within rad metres (scans neighbouring cells); returns {x,z,road,s} or null */
   function snapToRoad(x, z, rad, maxCls = 6) {
@@ -90,7 +90,7 @@ export function createOsmWorld(data) {
     const p = road.pts, i = lo * 2, seg = road.cum[lo + 1] - road.cum[lo] || 1, t = (s - road.cum[lo]) / seg;
     const dx = p[i + 2] - p[i], dz = p[i + 3] - p[i + 1], L = Math.hypot(dx, dz) || 1, fx = dx / L, fz = dz / L;
     out.x = p[i] + dx * t + fz * lane; out.z = p[i + 1] + dz * t - fx * lane;   // left of travel = (fz, -fx)
-    out.y = 0; out.h = Math.atan2(fx, fz); return out;
+    out.y = road.y[lo] + (road.y[lo + 1] - road.y[lo]) * t; out.h = Math.atan2(fx, fz); return out;
   }
   /** (rect) segment lists for mesh building: calls fn(road, a, b) for each run of consecutive segments touching the rect */
   const stamp = new Uint32Array(nSeg); let stampN = 0;
@@ -174,10 +174,32 @@ export function createOsmWorld(data) {
   }
   const terrainHeight = (x, z) => -WATER_DEPTH * waterFrac(x, z);
   /** ground height for physics/camera: terrain dips under water, but a bridge deck over water is at road level */
+  const bridgeCells = new Set();
   function heightAt(x, z) {
+    if (bridgeCells.size && bridgeCells.has(Math.floor(x / CELL) * 100003 + Math.floor(z / CELL))) { const nb = nearestRoad(x, z, 8); if (nb && nb.d < nb.halfW + 0.8 && nb.y > 0.05) return nb.y; }
     const t = terrainHeight(x, z); if (t > -0.05) return t;
-    const nr = nearestRoad(x, z, 8); return nr && nr.d < nr.halfW + 0.8 ? 0 : t;
+    const nr = nearestRoad(x, z, 8); return nr && nr.d < nr.halfW + 0.8 ? nr.y : t;
   }
+  /** raise roads that cross water into real bridges: the deck climbs a ramp onto the bridge and stays high above the water */
+  const bridgeList = [];
+  (function elevateBridges() {
+    for (const r of roads) {
+      if (r.cls > 6) continue; const n = r.n, wat = new Uint8Array(n);
+      for (let i = 0; i < n; i++) wat[i] = terrainHeight(r.pts[2 * i], r.pts[2 * i + 1]) < -0.8 ? 1 : 0;
+      for (let i = 0; i < n - 1; i++) if (!wat[i] || !wat[i + 1]) { const mx = (r.pts[2 * i] + r.pts[2 * i + 2]) / 2, mz = (r.pts[2 * i + 1] + r.pts[2 * i + 3]) / 2; if (terrainHeight(mx, mz) < -0.8) { wat[i] = wat[i + 1] = 1; } }
+      let longest = 0, run = 0, runStart = 0, best = [0, 0];
+      for (let i = 0; i < n; i++) { if (wat[i]) { if (!run) runStart = i; run++; const L = r.cum[i] - r.cum[runStart]; if (L > longest) { longest = L; best = [runStart, i]; } } else run = 0; }
+      if (longest < 25 || longest > 1800) continue;
+      const H = Math.min(6.5, Math.max(3.2, longest * 0.08)), RL = H * 15, dw = new Float32Array(n).fill(1e9);
+      for (let i = 0; i < n; i++) if (wat[i]) dw[i] = 0;
+      for (let i = 1; i < n; i++) dw[i] = Math.min(dw[i], dw[i - 1] + (r.cum[i] - r.cum[i - 1]));
+      for (let i = n - 2; i >= 0; i--) dw[i] = Math.min(dw[i], dw[i + 1] + (r.cum[i + 1] - r.cum[i]));
+      let top = 0;
+      for (let i = 0; i < n; i++) { const t = Math.max(0, Math.min(1, 1 - dw[i] / RL)), e = t * t * (3 - 2 * t); r.y[i] = H * e; top = Math.max(top, r.y[i]); }
+      for (let i = 0; i < n - 1; i++) if (r.y[i] > 0.05 || r.y[i + 1] > 0.05) { const L = r.cum[i + 1] - r.cum[i], st = Math.max(1, Math.ceil(L / 24)); for (let k = 0; k <= st; k++) { const f = k / st, cx = Math.floor((r.pts[2 * i] + (r.pts[2 * i + 2] - r.pts[2 * i]) * f) / CELL), cz = Math.floor((r.pts[2 * i + 1] + (r.pts[2 * i + 3] - r.pts[2 * i + 1]) * f) / CELL); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) bridgeCells.add((cx + a) * 100003 + (cz + b)); } }
+      r.bridgeH = H; bridgeList.push({ road: r, i0: best[0], i1: best[1], len: longest, H, x: r.pts[2 * Math.floor((best[0] + best[1]) / 2)], z: r.pts[2 * Math.floor((best[0] + best[1]) / 2) + 1] });
+    }
+  })();
   const naturalHeight = heightAt;
   /** bridge parapets: keep a vehicle on the deck. returns true when it pushed the vehicle */
   function bridgeBarrier(v, r) {
@@ -219,7 +241,7 @@ export function createOsmWorld(data) {
   const trafficRoads = roads.filter(r => r.cls <= 4 && r.len > 500);
 
   const railStations = (meta.rstations || []).map(s => ({ ...s, rail: railNearest(s.x, s.z, 600) }));
-  return { meta, WORLD, roads, trafficRoads, terrainHeight, bridgeBarrier, rails, railsInRect, railNearest, railStations, cities, cityByName, stations, landClass: lc, landW: GW, landH: GH, land,
+  return { meta, WORLD, bridgeList, roads, trafficRoads, terrainHeight, bridgeBarrier, rails, railsInRect, railNearest, railStations, cities, cityByName, stations, landClass: lc, landW: GW, landH: GH, land,
     heightAt, naturalHeight, baseHeight: heightAt, nearestRoad, snapToRoad, roadPoint, roadsInRect, buildingsNear, buildingsInRect, groundColor, surfaceAt,
     nearestCity, cityAt, isStreet: () => false, coastDx: () => 99999, hills: [], rivers: [], coast: [[0, 0], [0, 1]], landmarks: [], buildings: [], BLOCK: 64, STREET_HALF: 3.5 };
 }

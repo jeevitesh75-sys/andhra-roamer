@@ -89,8 +89,8 @@ export const CHAPTERS = [
     ], { r: 7, look: [0, 1.5, 0] }) },
     { id: 'c1_drive', need: 'all', title: 'Driving Mission - To the Warehouse', intro: [C('karthik', "Take a car from my garage. Whoever drives, follow the old road. Do not scratch anything, it is borrowed.")],
       obj: {
-        arjun: [{ k: 'goto', at: 'garage', r: 20, veh: 'any', text: "Meet Karthik at his garage" }, { k: 'goto', at: 'warehouse', r: 40, veh: 'any', text: 'Travel to the abandoned warehouse on the old road' }],
-        karthik: [{ k: 'goto', at: 'garage', r: 18, veh: 'in', text: "Take a vehicle (E near a parked car) and bring it to the garage" }, { k: 'goto', at: 'warehouse', r: 40, veh: 'in', text: 'Drive to the abandoned warehouse - arrive in a vehicle' }],
+        arjun: [{ k: 'goto', at: 'garage', r: 20, veh: 'any', text: "Meet Karthik at his garage" }, { k: 'collect', at: 'garage', n: 3, item: 'Spare key', r: 4, text: 'Karthik dropped his spare keys around the garage - find all 3' }, { k: 'goto', at: 'warehouse', r: 40, veh: 'any', limit: 300, text: 'Travel to the abandoned warehouse on the old road before Raghav loses patience' }],
+        karthik: [{ k: 'goto', at: 'garage', r: 18, veh: 'in', text: "Take a vehicle (E near a parked car) and bring it to the garage" }, { k: 'collect', at: 'garage', n: 3, item: 'Toolbox', r: 4, text: 'Load up: pick up the 3 toolboxes for tonight' }, { k: 'goto', at: 'warehouse', r: 40, veh: 'in', limit: 300, text: 'Drive to the abandoned warehouse - arrive in a vehicle before the clock runs out' }],
       } },
     { id: 'c1_king', need: 'cut', title: 'The King', at: 'warehouse', shots: [
       { cam: ['fly', [30, 14, 40], [14, 3, 16]], look: [0, 1.5, 0], dur: 6, who: 'narrator', text: 'Inside the dark warehouse, a single lamp burns above a long table. A man in a black coat is waiting.', props: [CAR('#0c0c0f', [10, 8], 2.6), CAR('#0c0c0f', [13, 3], 3.4)] },
@@ -106,8 +106,8 @@ export const CHAPTERS = [
     ] },
     { id: 'c1_first_job', need: 'all', title: "The First Delivery", intro: [C('dasari', "Velvet Club, front door. Karthik drives the package, Arjun walks in with the envelope. Do not open the boxes.")],
       obj: {
-        arjun: [{ k: 'goto', at: 'club', r: 18, veh: 'any', text: "Take the envelope to Raghav's Velvet Club" }],
-        karthik: [{ k: 'goto', at: 'club', r: 18, veh: 'in', text: "Drive the delivery to the Velvet Club - arrive in a vehicle" }],
+        arjun: [{ k: 'goto', at: 'club', r: 18, veh: 'any', text: "Take the envelope to Raghav's Velvet Club" }, { k: 'talk', at: 'club', who: 'dasari', name: 'Dasari', r: 7, done: 'Envelope handed to Dasari', text: "Get out and hand the envelope to Dasari at the club door", lines: [['dasari', 'Arjun. Good, you are on time. Raghav does not forgive late.'], ['arjun', 'Envelope is sealed. Tell him two friends delivered it.'], ['dasari', 'Two friends. He will like that. Go - wait for my call.']] }],
+        karthik: [{ k: 'goto', at: 'club', r: 18, veh: 'in', limit: 240, text: "Drive the delivery to the Velvet Club - arrive in a vehicle" }, { k: 'collect', at: 'club', n: 2, item: 'Guard badge', r: 4, text: "Scout the club's outside for 2 guard badges lying around - know the enemy" }],
       } },
   ] },
   /* =========================================================== 2 */
@@ -145,7 +145,7 @@ export const CHAPTERS = [
     { id: 'c2_secret', need: 'all', title: 'Secret Location - The Smuggling Yard', intro: [C('dasari', "There is a yard the King never shows anyone. Find it. Arjun reads the office terminal, Karthik watches the road.")],
       obj: {
         arjun: [{ k: 'goto', at: 'yardTerm', r: 30, veh: 'any', text: 'Find the secret smuggling yard' }, { k: 'hack', at: 'yardTerm', r: 14, game: 'seq', len: 5, text: 'Open the yard office terminal and read the shipment records' }],
-        karthik: [{ k: 'goto', at: 'yard', r: 30, veh: 'in', text: 'Drive to the secret yard and keep watch' }, { k: 'hold', at: 'yard', r: 30, secs: 14, text: 'Keep watch while Arjun reads the records' }],
+        karthik: [{ k: 'goto', at: 'yard', r: 30, veh: 'in', text: 'Drive to the secret yard and keep watch' }, { k: 'collect', at: 'yard', n: 3, item: 'Watch point', r: 5, text: 'Walk the fence and check 3 watch points while Arjun reads the records' }, { k: 'hold', at: 'yard', r: 30, secs: 8, text: 'Keep watch while Arjun reads the records' }],
       } },
     { id: 'c2_protect', need: 'all', title: 'Protect the Accountant', intro: [C('dasari', "Meena the accountant is carrying the King's books. Pasha's survivors want her dead. Protect her at the godown. Both of you.")],
       obj: {
@@ -174,8 +174,8 @@ export const CHAPTERS = [
     ] },
     { id: 'c3_station', need: 'all', title: 'Questioning at the Station', intro: [C('dev', "Station. On foot, no vehicles at my door. I want to look at you while you answer.")],
       obj: {
-        arjun: [{ k: 'goto', at: 'station', r: 14, veh: 'any', text: 'Report to the police station for questioning', ask: 'q1' }],
-        karthik: [{ k: 'goto', at: 'station', r: 14, veh: 'any', text: 'Report to the police station. ACP Dev asked for you personally.', ask: 'q2' }],
+        arjun: [{ k: 'goto', at: 'station', r: 14, veh: 'any', text: 'Report to the police station for questioning', ask: 'q1' }, { k: 'talk', at: 'station', who: 'dev', name: 'ACP Dev', r: 8, done: 'Dev lets you wait outside', text: 'Get out and speak to ACP Dev at the station door', lines: [['dev', 'Arjun. Every story has two sides. Where were you last night?'], ['arjun', 'Working. Ask anyone at the tea stall.'], ['dev', 'I will. Do not leave the district.']] }],
+        karthik: [{ k: 'goto', at: 'station', r: 14, veh: 'any', text: 'Report to the police station. ACP Dev asked for you personally.', ask: 'q2' }, { k: 'talk', at: 'station', who: 'dev', name: 'ACP Dev', r: 8, done: 'Dev lets you go', text: 'Get out and speak to ACP Dev at the station door', lines: [['dev', 'Karthik. A driver always knows more than he says.'], ['karthik', 'I drive. I do not ask where.'], ['dev', 'Remember that when I ask again.']] }],
       } },
     { id: 'c3_checkpoint', need: 'all', title: 'Police Checkpoint', checkpoints: true, intro: [C('karthik', "Dev let us go too easily. There will be a checkpoint on the way to the safehouse. Arjun, what do we do?")],
       obj: {
@@ -240,7 +240,7 @@ export const CHAPTERS = [
     ], { r: 6, look: [0, 1.5, 0], at: { arjun: [-1.2, 0], karthik: [1.2, 0] } }) },
     { id: 'c4_split', need: 'all', title: 'Separate Ways', intro: [C('narrator', 'For a while, the two friends walk different roads. But the night is not finished with either of them.')],
       obj: {
-        arjun: [{ k: 'goto', at: 'bridge', r: 30, veh: 'any', text: 'Alone. Go to the Old Bridge and think about what Karthik did' }, { k: 'hack', at: 'bridge', r: 18, game: 'trace', len: 5, text: "Read Raghav's message on your phone: he wants a meeting about Karthik" }],
+        arjun: [{ k: 'goto', at: 'bridge', r: 30, veh: 'any', text: 'Alone. Drive up onto the Old Bridge over the water and think about what Karthik did' }, { k: 'collect', at: 'bridge', n: 3, item: 'Memory', r: 5, text: 'Walk the bridge - 3 places where you and Karthik used to stand' }, { k: 'hack', at: 'bridge', r: 18, game: 'trace', len: 5, text: "Read Raghav's message on your phone: he wants a meeting about Karthik" }],
         karthik: [{ k: 'goto', at: 'station', r: 16, veh: 'in', text: 'Drive to the police station and tell ACP Dev what has happened' }, { k: 'goto', at: 'bridge', r: 30, veh: 'in', text: 'Dev says Arjun is in danger. Drive to the Old Bridge' }],
       } },
     { id: 'c4_reunite', need: 'all', title: 'Reunion at the Bridge', intro: [C('karthik', "Arjun, Raghav's men are coming for you. I do not care if you hate me. Stay alive.")],

@@ -22,8 +22,7 @@ export const SITES = [
   { key: 'garage', file: 'garage', size: 20, dim: 'xz', anchor: 'garage', side: 18, vis: 500 },
   { key: 'tavern', file: 'tavern', size: 9, dim: 'xz', anchor: 'tea', side: 9, vis: 400 },
   { key: 'gas', file: 'gas', size: 24, dim: 'xz', anchor: 'highway', side: 20, vis: 600 },
-  { key: 'bridgeA', file: 'bridgeA', size: 30, dim: 'xz', anchor: 'bridge', side: 0, vis: 700, road: true },
-  { key: 'bridgeB', file: 'bridgeB', size: 30, dim: 'xz', anchor: 'checkpoint', side: 0, vis: 500, road: true },
+  { key: 'bridgeB', file: 'bridgeB', size: 30, dim: 'xz', anchor: 'checkpoint', side: 0, vis: 500, road: true, solid: false },
   { key: 'phone', file: 'phone', size: 1.7, dim: 'all', anchor: 'yardTerm', side: 2.5, vis: 300 },
 ];
 
@@ -34,7 +33,7 @@ export const SITES = [
  *  paintRe/tint: which material takes the player's colour (tint 1 = full colour, lower = mixed with the texture).
  *  headMat/tailMat: materials that glow as head/brake lights.  head/tail: where to put glow pads (probe x, probe heights). */
 export const VEHICLES = {
-  car: [{ file: 'lambo', rotY: 0, len: 4.4, wheelRe: /wheel/i, paintRe: /Body/i, tint: 0.6, head: { x: 0.62, y: [0.3, 0.38, 0.46, 0.54] }, tail: { x: 0.64, y: [0.5, 0.6, 0.7, 0.8] } }],
+  car: [{ file: 'lambo', rotY: 0, len: 4.4, wheelRe: /wheel/i, paintRe: /Body/i, tint: 1, head: { x: 0.62, y: [0.3, 0.38, 0.46, 0.54] }, tail: { x: 0.64, y: [0.5, 0.6, 0.7, 0.8] } }],
   police: [{ file: 'police', rotY: 0, len: 4.3, wheelRe: /wheel/i, headMat: /^(Headlights|WhiteLights)$/, tailMat: /^TailLights$/ }],
   lorry: [{ file: 'truck', rotY: 0, len: 6.6, sx: 0.78, wheelRe: /wheel/i, headMat: /^Headlights$/, tailMat: /^BrakeLight$/ }],
   bus: [{ file: 'bus', rotX: -Math.PI / 2, len: 9.2, sx: 0.6, paintRe: /^color_16757560$/, tint: 1, tailMat: /^color_14093196$/, head: { x: 0.85, y: [0.55, 0.7, 0.85, 1.0] },

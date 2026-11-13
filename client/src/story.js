@@ -32,7 +32,16 @@ export class StoryClient {
     $('cineSkip').onclick = () => this.endCine(true);
     $('endClose').onclick = () => { $('storyEnd').hidden = true; };
     $('hackCancel').onclick = () => this.closeHack(false);
+    const ab = document.createElement('button'); ab.id = 'objAct'; ab.hidden = true; document.body.appendChild(ab); this.act = ab; ab.onclick = () => this.doAct();
+    addEventListener('keydown', e => { if (e.code === 'KeyF' && !this.act.hidden && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) this.doAct(); });
   }
+  /* interactive objectives: talk to a person, collect items, timed drives */
+  doAct() {
+    const o = this.cur(); if (!o || o.k !== 'talk' || o.busy) return; o.busy = true; this.act.hidden = true; const lines = o.lines || [], H = this.H;
+    let i = 0; const next = () => { if (this.cur() !== o) return; if (i < lines.length) { H.call(lines[i][0], lines[i][1]); const ms = Math.max(3200, lines[i][1].length * 62); i++; setTimeout(next, ms); } else { H.toast('Done: ' + (o.done || 'conversation finished'), 2500); this.advanceObj(); } }; next();
+  }
+  talkSpot(o) { const A = this.anchor(o.at), k = o.key || (o.key = this.curId + ':' + this.idx); if (!o.spot) { const w = this.G.world; let x = A.x + 4, z = A.z + 3; if (w.heightAt(x, z) < -0.3) { x = A.x - 4; z = A.z - 3; } o.spot = { x, z }; } return o.spot; }
+  collectPts(o) { if (o.pts) return o.pts; const A = this.anchor(o.at), w = this.G.world, rnd = mulberry32(strHash(this.curId + o.at + (o.n || 3))); o.pts = []; for (let k = 0, t = 0; o.pts.length < (o.n || 3) && t < 80; t++) { const a = (o.pts.length / (o.n || 3)) * 6.283 + rnd() * 1.2, d = 22 + rnd() * 30, x = A.x + Math.cos(a) * d, z = A.z + Math.sin(a) * d; if (w.heightAt(x, z) > -0.3) o.pts.push({ x, z, label: o.item || 'Item' }); } o.got = 0; return o.pts; }
   get net() { return this.G.net; }
   get online() { return this.net && this.net.status === 'online'; }
   get myId() { return this.online ? this.net.id : 1; }
@@ -53,7 +62,14 @@ export class StoryClient {
       if (!p) p = { x: base.x + (rnd() - 0.5) * 80, z: base.z + (rnd() - 0.5) * 80 };
       A[k] = { x: p.x, z: p.z, h: p.road ? w.roadPoint(p.road, p.s, 0, {}).h : 0, label: d.label, key: k, road: p.road, s: p.s };
     };
-    for (const [k, d] of Object.entries(ANCHORS)) place(k, d);
+    for (const [k, d] of Object.entries(ANCHORS)) {
+      place(k, d);
+      if (k === 'bridge' && w.bridgeList && w.bridgeList.length) {   // the story bridge is a REAL raised bridge over water, never a prop on dry land
+        const tx = town.x + Math.cos(d.ang) * d.dist, tz = town.z + Math.sin(d.ang) * d.dist; let bb = null, bd = 1e18;
+        for (const b of w.bridgeList) { const dd = Math.hypot(b.x - tx, b.z - tz); if (b.len > 40 && b.len < 1500 && dd < bd && Math.hypot(b.x - town.x, b.z - town.z) > 500) { bd = dd; bb = b; } }
+        if (bb) { const r = bb.road, s0 = (r.cum[bb.i0] + r.cum[bb.i1]) / 2, rp = w.roadPoint(r, s0, 0, {}); A[k] = { x: rp.x, z: rp.z, h: rp.h, label: d.label, key: k, road: r, s: s0, bridge: true }; }
+      }
+    }
     A.ending = A.station; this.anch = A; this.anchFor = w.meta.id; G.anchors = A;
   }
   anchor(k) { if (this.anchFor !== this.G.world.meta.id) this.buildAnchors(); return this.anch[k] || this.anch.town; }
@@ -115,7 +131,11 @@ export class StoryClient {
     // the shared fight is already won (e.g. by the host): nothing before it matters any more, so finish this part right away
     const ci = this.list.findIndex((x, i) => i >= this.idx && x.k === 'clear');
     if (ci >= 0 && o.k !== 'clear') { const L = this.list[ci], key = this.curId + ':' + L.at + ':' + L.n; if (this.gangKey === key && this.gang.length && !this.gang.some(g => g.hp > 0)) { this.wonT = (this.wonT || 0) + dt; if (this.wonT > 1.5) { this.wonT = 0; this.H.toast('Your team already won the fight!', 2500); this.idx = this.list.length; this.G.scene.setBeacon(null); this.finishStep(); return; } } else this.wonT = 0; }
-    const A = o.at ? this.anchor(o.at) : null, d = A ? Math.hypot(A.x - P.x, A.z - P.z) : 0, inVeh = !G.foot;
+    let A = o.at ? this.anchor(o.at) : null, d = A ? Math.hypot(A.x - P.x, A.z - P.z) : 0; const inVeh = !G.foot;
+    if (o.k === 'collect') { const pts = this.collectPts(o); A = pts[o.got] || A; d = Math.hypot(A.x - P.x, A.z - P.z); G.scene.setBeacon(A, '#7dffb0'); const key = this.curId + this.idx + ':' + o.got; if (this.wpKey !== key) { this.wpKey = key; G.wp = { x: A.x, z: A.z, label: o.item || 'Item' }; G.wpStory = true; G.scene.setWaypoint(G.wp); } if (d <= (o.r || 5)) { o.got++; this.H.toast(`${o.item || 'Item'} ${o.got}/${pts.length} collected`, 1800); if (o.got >= pts.length) { this.advanceObj(); return; } } this.collectTxt(o, pts); return; }
+    if (o.k === 'talk') { const sp = this.talkSpot(o), dd = Math.hypot(sp.x - P.x, sp.z - P.z); G.scene.setBeacon(sp, '#ffd24a'); if (this.wpKey !== this.curId + this.idx) { this.wpKey = this.curId + this.idx; G.wp = { x: sp.x, z: sp.z, label: o.name || 'Talk' }; G.wpStory = true; G.scene.setWaypoint(G.wp); } const ready = dd <= (o.r || 6) && !!G.foot && !o.busy; this.act.hidden = !ready; if (ready) this.act.textContent = '💬 TALK to ' + (o.name || 'them') + ' (F)'; else if (dd <= (o.r || 6) && !G.foot && (this.warnT = (this.warnT || 0) - dt) < 0) { this.warnT = 4; this.H.toast('Get out of the vehicle (E) to talk', 2000); } return; }
+    if (this.act && !this.act.hidden) this.act.hidden = true;
+    if (o.k === 'goto' && o.limit) { o.tl = (o.tl === undefined ? o.limit : o.tl) - dt; if (!o.tt || (o.tt -= dt) < 0) { o.tt = 0.5; $('objText').textContent = `${o.text}  ⏱ ${Math.max(0, Math.ceil(o.tl))}s`; } if (o.tl <= 0 && !(d <= o.r)) { o.tl = o.limit + 8; this.H.toast('Too slow! The clock is reset - hurry!', 2500); } }
     if (A && o.k !== 'clear') G.scene.setBeacon(A, '#ffd24a');
     if (A) { const key = this.curId + this.idx; if (this.wpKey !== key) { this.wpKey = key; G.wp = { x: A.x, z: A.z, label: A.label }; G.wpStory = true; G.scene.setWaypoint(G.wp); } }
     if (o.k === 'goto') { const okV = o.veh === 'in' ? inVeh : o.veh === 'out' ? !inVeh : true; if (d <= o.r && okV) { if (o.ask && !this.localQ[o.ask]) { this.localQ[o.ask] = 1; this.ask(o.ask); } this.advanceObj(); } else if (d <= o.r && !okV && (this.warnT = (this.warnT || 0) - dt) < 0) { this.warnT = 4; this.H.toast(o.veh === 'in' ? 'You need to be in a vehicle (press E near a parked one)' : 'Get out of the vehicle first (E)', 2000); } }
@@ -142,7 +162,12 @@ export class StoryClient {
     const names = Object.entries(s.roles || {}).map(([id, r]) => `${ROLES[r].emoji} ${ROLES[r].short} ${s.done.includes(Number(id)) ? '<span class="done">done</span>' : '...'}`);
     $('objTeam').innerHTML = names.join(' &nbsp; ') + (Object.keys(s.roles || {}).length < 2 ? ' &nbsp; (an AI partner covers the other friend)' : '');
   }
+  collectTxt(o, pts) { if (!o.tt || (o.tt -= 0.016) < 0) { o.tt = 0.5; $('objText').textContent = `${o.text}  (${o.got}/${pts.length})`; } }
   hud() {
+    this._hud(); const G = this.G, C = G.chars, o = this.active && !this.cine ? this.cur() : null;
+    if (C) { if (o && o.k === 'talk' && o.who && !o.busyDone) { const R = NPCS[o.who] || {}, sp = this.talkSpot(o), P = this.playerPos(); C.set('mis_' + o.who, { x: sp.x, y: G.world.heightAt(sp.x, sp.z), z: sp.z, h: P ? Math.atan2(P.x - sp.x, P.z - sp.z) : 0, moving: 0, color: R.shirt || R.color || '#8e44ad', pants: R.pants || '#222a35', rig: R.rig || 'man2', vis: true, hatModel: R.hatModel, hat: R.hat }); } C.sweep('mis_'); }
+  }
+  _hud() {
     const o = this.cur(), P = this.playerPos(), mk = $('objMark'); if (!o || !o.at || !P || this.cine || !this.active) { $('objDist').textContent = ''; mk.hidden = true; return; }
     const A = this.anchor(o.at), d = Math.hypot(A.x - P.x, A.z - P.z), txt = d > 1000 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m'; $('objDist').textContent = txt;
     const sp = this.G.scene.toScreen(A.x, this.G.world.heightAt(A.x, A.z) + 9, A.z, this._sp || (this._sp = {})), W = window.innerWidth, Hh = window.innerHeight; let x = sp.x, y = sp.y; const ok = sp.visible && x > 30 && x < W - 30 && y > 60 && y < Hh - 60;

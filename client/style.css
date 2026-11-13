@@ -131,7 +131,7 @@ label.inl{display:flex;align-items:center;gap:8px;margin:0;text-transform:none}l
 
 /* --- cinematic cutscene --- */
 #cine{position:fixed;inset:0;z-index:30;pointer-events:none}
-#cine .bar{position:absolute;left:0;right:0;height:13vh;background:#000;transition:transform .8s}#cine .bar.top{top:0;transform:translateY(-100%)}#cine .bar.bottom{bottom:0;transform:translateY(100%)}
+#cine .bar{position:absolute;left:0;right:0;width:auto;height:13vh;border-radius:0;overflow:visible;background:#000;transition:transform .8s}#cine .bar.top{top:0;transform:translateY(-100%)}#cine .bar.bottom{bottom:0;transform:translateY(100%)}
 #cine.on .bar{transform:none}
 #cineTitle{position:absolute;left:0;right:0;top:19vh;text-align:center;font:italic 900 clamp(26px,6vw,64px)/1 Impact,"Arial Black",system-ui;color:#fff;letter-spacing:.08em;text-shadow:0 4px 24px #000;opacity:0;transition:opacity 1s}
 #cineTitle small{display:block;font:600 clamp(12px,2vw,20px) system-ui;letter-spacing:.4em;color:#f6c744;margin-bottom:10px}
@@ -188,3 +188,5 @@ body.is-touch #wpBox{top:6px;left:50%;max-width:42vw}
 #hudBar #hudDone{background:#1e9d5a}
 #hudBar input{width:140px}
 .is-touch #touch .tr .drift{grid-column:1 / span 2;grid-row:3;height:42px;font-size:14px;background:rgba(160,90,255,.35)}
+
+#objAct{position:fixed;left:50%;top:58%;transform:translateX(-50%);z-index:12;padding:12px 22px;border-radius:30px;border:2px solid #ffd24a;background:rgba(10,16,26,.92);color:#fff;font:800 16px system-ui;box-shadow:0 0 18px #ffd24a88}

@@ -293,11 +293,11 @@ export function osmBridges(world, runs, ox, oz) {
     const r = u.road, p = r.pts;
     for (let i = u.a; i < u.b; i++) {
       const ax = p[2 * i], az = p[2 * i + 1], bx = p[2 * i + 2], bz = p[2 * i + 3], mx = (ax + bx) / 2, mz = (az + bz) / 2, L = Math.hypot(bx - ax, bz - az);
-      if (L < 0.5 || !(r.bridge || (world.terrainHeight || world.heightAt)(mx, mz) < -0.8)) continue;
+      const ym = (r.y[i] + r.y[i + 1]) / 2; if (L < 0.5 || !(ym > 0.05 || r.bridge || (world.terrainHeight || world.heightAt)(mx, mz) < -0.8)) continue;
       const dx = (bx - ax) / L, dz = (bz - az) / L, c = dz, s = -dx, hw = r.halfW, X = mx - ox, Z = mz - oz, nx = c, nz = s; // local x axis = (c,s)
-      pushBox(out, X, Z, hw + 0.35, L / 2 + 0.05, c, s, -0.9, 0.0, conc, true, 1, 1);                       // deck
-      for (const sd of [-1, 1]) pushBox(out, X + nx * (hw + 0.2) * sd, Z + nz * (hw + 0.2) * sd, 0.18, L / 2 + 0.05, c, s, 0, 1.0, rail, true, 1, 1);   // parapet
-      if (Math.floor((r.cum[i] + 0.1) / 14) !== Math.floor((r.cum[i + 1] + 0.1) / 14) || L > 14) for (const sd of [-0.5, 0.5]) pushBox(out, X + nx * hw * sd, Z + nz * hw * sd, 0.55, 0.55, c, s, -2.3, -0.9, conc, true, 1, 1);   // piers
+      pushBox(out, X, Z, hw + 0.35, L / 2 + 0.05, c, s, ym - 1.6, ym - 0.12, conc, true, 1, 1);                       // deck
+      for (const sd of [-1, 1]) pushBox(out, X + nx * (hw + 0.2) * sd, Z + nz * (hw + 0.2) * sd, 0.18, L / 2 + 0.05, c, s, ym, ym + 1.0, rail, true, 1, 1);   // parapet
+      if (ym > 1.8 && (Math.floor((r.cum[i] + 0.1) / 14) !== Math.floor((r.cum[i + 1] + 0.1) / 14) || L > 14)) for (const sd of [-0.5, 0.5]) pushBox(out, X + nx * hw * sd, Z + nz * hw * sd, 0.55, 0.55, c, s, -2.3, ym - 1.6, conc, true, 1, 1);   // piers
     }
   }
   if (!out.pos.length) return null;

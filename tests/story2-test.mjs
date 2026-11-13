@@ -8,7 +8,7 @@ ok(ROLE_ORDER.length === 2 && S.ROLES.length === 2, 'exactly two playable charac
 ok(!JSON.stringify(CHAPTERS).match(/Vikram|Raju|Meghana|Ranadheer|mastermind|hacker|insider|Pasha.*Kondapalli Warehouse/i), 'no trace of the old story (characters, names, roles)');
 // ---- every mission step: both characters have objectives, all anchors/questions/speakers exist
 let steps = 0, lines = 0, missions = 0;
-const needObj = (o, where) => { for (const r of ROLE_ORDER) { const l = o[r] || o.default; ok(!!l, `${where}: objective for ${r}`); for (const t of (Array.isArray(l) ? l : [l])) { if (t.at) ok(!!ANCHORS[t.at], `${where}/${r}: anchor ${t.at}`); if (t.ask) ok(!!QUESTIONS[t.ask], `${where}: question ${t.ask}`); ok(['goto', 'hack', 'clear', 'escape', 'hold'].includes(t.k), `${where}/${r}: primitive ${t.k}`); } } };
+const needObj = (o, where) => { for (const r of ROLE_ORDER) { const l = o[r] || o.default; ok(!!l, `${where}: objective for ${r}`); for (const t of (Array.isArray(l) ? l : [l])) { if (t.at) ok(!!ANCHORS[t.at], `${where}/${r}: anchor ${t.at}`); if (t.ask) ok(!!QUESTIONS[t.ask], `${where}: question ${t.ask}`); ok(['goto', 'hack', 'clear', 'escape', 'hold', 'talk', 'collect'].includes(t.k), `${where}/${r}: primitive ${t.k}`); } } };
 for (const c of CHAPTERS) for (const s of c.steps) {
   steps++;
   if (s.need === 'all') { missions++; if (s.variants) for (const [k, v] of Object.entries(s.variants)) needObj(v.obj, s.id + '[' + k + ']'); else needObj(s.obj, s.id); for (const i of (s.intro || [])) ok(!!(NPCS[i.who] || ROLES[i.who]), s.id + ' intro speaker ' + i.who); }

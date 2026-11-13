@@ -110,3 +110,12 @@ v3p: hugs/kisses now pose the skeleton - `_embrace()` in characters.js rotates b
 ## v3t - finding your friend in a room
 - The room name is `<region>-<code>`, so two players on different regions are in different rooms even with the same code. Pause menu now shows region + code and an invite link (tap to copy); `?region=..&room=..` in the URL now overrides the saved room.
 - Players who pick different start cities spawn far apart: a compass arrow + distance to the nearest friend shows on screen when they are out of sight, the second player to join is moved next to the friend already in the room (once, within 30 s of joining), name tags are visible up to 700 m, and TEAM still jumps to a friend.
+
+## v3u changes
+- Cutscene black bars fixed (the letterbox bars were inheriting the HUD `.bar` width).
+- App icon: your Andhra Underworld artwork (favicon, home-screen icon, manifest.webmanifest, loading screen).
+- Real raised bridges: roads that cross water now climb a ramp onto a 3-6.5 m high deck with piers; you drive up and over. The story "Old Bridge" is a real bridge; the floating bridge prop was removed. (tests/bridge-test.mjs)
+- Solid buildings: the club, garage, tavern, factory, port, den, warehouse and yard have collisions for you and vehicles.
+- Interactive missions for both friends: collect items, talk to people (F / TALK button), timed drives. Each friend has their own steps.
+- Roof gun removed: shoot with the pistol from the car window while driving.
+- Car colours fixed (Lamborghini texture neutralised so paint tints properly); more traffic (480).
