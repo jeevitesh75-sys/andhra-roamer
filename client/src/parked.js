@@ -43,7 +43,7 @@ export class ParkedLot {
       const side = rnd() < 0.5 ? -1 : 1, off = side * (sn.road.halfW + 1.7), p = w.roadPoint(sn.road, sn.s, off, {}); if (insideBuilding(w, p.x, p.z, 1.2) || w.heightAt(p.x, p.z) < -0.2) continue;
       const r = rnd(), type = placed === 0 ? 'car' : placed === 1 ? 'bike' : r < 0.5 ? 'car' : r < 0.85 ? 'bike' : r < 0.93 ? 'bus' : 'lorry', spec = SPECS[type];
       if (this._clash(p.x, p.z, spec) || Math.hypot(p.x - x, p.z - z) < 4) continue;
-      const id = 'k' + key + '_' + placed; this.statics.set(id, { id, type, color: PAINT[Math.floor(rnd() * PAINT.length)], x: p.x, z: p.z, h: p.h + (side < 0 ? Math.PI : 0), static: true }); placed++;
+      const id = 's' + (100000 + ((strHash('id' + key) >>> 0) % 900000) * 20 + placed); this.statics.set(id, { id, type, color: PAINT[Math.floor(rnd() * PAINT.length)], x: p.x, z: p.z, h: p.h + (side < 0 ? Math.PI : 0), static: true }); placed++;
     }
   }
   _clash(x, z, spec) { for (const e of this.statics.values()) if (Math.hypot(e.x - x, e.z - z) < (SPECS[e.type].len + spec.len) * 0.5 + 0.6) return true; return false; }
