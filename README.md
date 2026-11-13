@@ -130,5 +130,5 @@ Run once from the project root (Termux: `pkg install curl`): `bash tools/get-pol
 Then the game uses them automatically (anything missing falls back to the old models):
 - 23 extra vehicles in traffic/parked: taxi, hatchback, SUV, minivan, jeep, sedan, kei van, pickup, police cruiser, delivery/flatbed/goods lorries, garbage truck, tow truck, ambulance, fire engine, city/school/shuttle/mini/articulated buses, moped, touring motorcycle.
 - Civic buildings at fixed places: police station (story station), government hospital, fire station, bank, school, temple, shops, clock tower, market stall (anchors in storydata ANCHORS).
-- Street people (8 adults + 2 kids) and animals (cow/ox, dogs, goat/sheep) replace the box figures for the nearest 28 people / 28 animals.
+- Street people (8 adults + 2 kids) and animals (cow/ox, dogs, goat/sheep) replace the box figures for the nearest 14 people and 14 animals.
 - Edit the list in tools/pf-ids.txt + src/pfpack.js to use other models. Vehicles are assumed to face +Z (or are auto-turned if their length is along X).
