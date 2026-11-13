@@ -34,6 +34,18 @@ export class ParkedLot {
       let k = 0; for (const sn of spots) { if (k > 5) break; for (const ds of [14, -20]) { place(sn.road, sn.s + ds, rnd() < 0.5 ? -1 : 1); k++; } }
     }
   }
+  /** put a handful of parked cars / bikes / a bus on the roads around a spot (story chapters drop you in places with no vehicles) */
+  seed(x, z, count = 9) {
+    const w = this.w, key = Math.round(x / 40) + '_' + Math.round(z / 40); this.seeded = this.seeded || new Set(); if (this.seeded.has(key)) return; this.seeded.add(key);
+    const rnd = mulberry32(strHash('seed' + key)); let placed = 0;
+    for (let t = 0; t < 60 && placed < count; t++) {
+      const a = rnd() * 6.283, d = 14 + rnd() * 70, sn = w.snapToRoad(x + Math.cos(a) * d, z + Math.sin(a) * d, 40, 6); if (!sn) continue;
+      const side = rnd() < 0.5 ? -1 : 1, off = side * (sn.road.halfW + 1.7), p = w.roadPoint(sn.road, sn.s, off, {}); if (insideBuilding(w, p.x, p.z, 1.2) || w.heightAt(p.x, p.z) < -0.2) continue;
+      const r = rnd(), type = placed === 0 ? 'car' : placed === 1 ? 'bike' : r < 0.5 ? 'car' : r < 0.85 ? 'bike' : r < 0.93 ? 'bus' : 'lorry', spec = SPECS[type];
+      if (this._clash(p.x, p.z, spec) || Math.hypot(p.x - x, p.z - z) < 4) continue;
+      const id = 'k' + key + '_' + placed; this.statics.set(id, { id, type, color: PAINT[Math.floor(rnd() * PAINT.length)], x: p.x, z: p.z, h: p.h + (side < 0 ? Math.PI : 0), static: true }); placed++;
+    }
+  }
   _clash(x, z, spec) { for (const e of this.statics.values()) if (Math.hypot(e.x - x, e.z - z) < (SPECS[e.type].len + spec.len) * 0.5 + 0.6) return true; return false; }
   *all() { for (const e of this.statics.values()) if (!this.taken.has(e.id)) yield e; for (const e of this.dyn.values()) yield e; }
   get(id) { return this.dyn.get(id) || (this.taken.has(id) ? null : this.statics.get(id)) || null; }

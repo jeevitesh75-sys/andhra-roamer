@@ -104,7 +104,7 @@ export class StoryClient {
   }
   clear() { if (this.G.wpStory) { this.G.wp = null; this.G.wpStory = false; this.G.scene && this.G.scene.setWaypoint(null); } this.wpKey = ''; this.list = []; this.cine && this.endCine(false); $('objective').hidden = true; $('choice').hidden = true; this.closeHack(false); this.G.scene && this.G.scene.setBeacon(null); this.gang = []; this.gangKey = ''; this.gangFor = ''; this.G.setStars && this.G.setStars(0); }
   beginStep(s) {
-    const G = this.G, H = this.H, def = stepById(s.id); if (!def) return; this.clear(); this.curId = s.id; this.def = def.step; this.idx = 0; this.sentDone = this.sentReady = ''; this.hackDone = false;
+    const G = this.G, H = this.H, def = stepById(s.id); if (!def) return; this.clear(); try { const P0 = this.playerPos(); if (P0 && G.lot) G.lot.seed(P0.x, P0.z, 10); } catch (e) { } this.curId = s.id; this.def = def.step; this.idx = 0; this.sentDone = this.sentReady = ''; this.hackDone = false;
     G.heat = !!def.step.heat; if (G.law) G.law.setCheckpoints(def.step.checkpoints ? [{ ...this.anchor('checkpoint') }] : []);
     G.checkpointRun = false;
     if (def.step.need === 'cut') return this.startCine(s, def.step);

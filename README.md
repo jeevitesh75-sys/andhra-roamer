@@ -119,3 +119,8 @@ v3p: hugs/kisses now pose the skeleton - `_embrace()` in characters.js rotates b
 - Interactive missions for both friends: collect items, talk to people (F / TALK button), timed drives. Each friend has their own steps.
 - Roof gun removed: shoot with the pistol from the car window while driving.
 - Car colours fixed (Lamborghini texture neutralised so paint tints properly); more traffic (480).
+
+## v3v changes
+- Vehicles wherever you spawn: every story chapter / cutscene drop-in now seeds 8-10 parked cars, bikes (and sometimes a bus/lorry) on the roads around you (ParkedLot.seed).
+- Vice-City carjacking: walk into the road and moving traffic brakes to a stop; press E (or the action button) next to any traffic vehicle to pull the driver out - he runs off - and drive away in it (1 wanted star outside story missions). The car comes back into traffic after ~2.5 minutes.
+- tests/carjack-test.mjs

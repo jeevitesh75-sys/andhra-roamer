@@ -102,7 +102,7 @@ async function startGame() {
     const q = G.save.quality || (matchMedia('(max-width: 800px)').matches ? 'low' : 'medium');
     try { G.scene = new Scene3D(G.T, $('game'), G.world, q, G.assets); } catch (e) { $('ldErr').textContent = 'Graphics failed to start: ' + e.message; console.error(e); return; }
     G.veh = new Vehicle(prof.veh, G.world); G.crowd = new Crowd(G.world); G.police = new Police(G.world); G.wp = null;
-    G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.chars = new Characters(G.T, G.scene.scene, G.assets); G.sites = new Sites(G.T, G.scene.scene, G.assets); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
+    G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.lot.seed(G.veh.x, G.veh.z, 8); G.chars = new Characters(G.T, G.scene.scene, G.assets); G.sites = new Sites(G.T, G.scene.scene, G.assets); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
     G.money = G.save.money || 0; G.earned = G.save.earned || 0;
     initInput(); initHud();
   } else { G.veh.setType(prof.veh); G.scene.removeModel('me'); }
@@ -392,9 +392,28 @@ function exitVehicle(silent) {
   if (!silent) toast('Out of the vehicle. Use the joystick / WASD, Shift runs, E near a vehicle to get in', 3500);
 }
 function tryEnter() {
-  const f = G.foot; if (!f || f.anim || G.dead) return; if (G.ride) { endRide(); return; } const n = G.lot.nearest(f.x, f.z); if (!n) { const rc = rideCandidate(); if (rc) { startRide(rc); return; } toast('No vehicle close enough', 1500); return; }
+  const f = G.foot; if (!f || f.anim || G.dead) return; if (G.ride) { endRide(); return; } const n = G.lot.nearest(f.x, f.z); if (!n) { const rc = rideCandidate(); if (rc) { startRide(rc); return; } const jc = npcCandidate(); if (jc) { carjack(jc); return; } toast('No vehicle close enough', 1500); return; }
   const e = n.e; if (e.id.startsWith('me~') || !G.net || G.net.status !== 'online') return onEnterReply({ ok: true, id: e.id, v: e });
   G.net.sendEnter(e.id, e.static ? { type: e.type, color: e.color, x: e.x, z: e.z, h: e.h } : undefined);
+}
+/** Vice-City style: pull the driver out of a passing / stopped traffic vehicle and take it */
+function npcCandidate() {
+  const f = G.foot; if (!f || !G.scene.npcPos) return null; let best = null, bd = 5.2;
+  G.scene.npcPos.forEach((n, i) => { if (!n.type || n.x < -1e8) return; const d = distToVehicle(f.x, f.z, n.x, n.z, n.h, SPECS[n.type] || SPECS.car); if (d < bd) { bd = d; best = { i }; } });
+  return best;
+}
+function carjack(c) {
+  const f = G.foot, n = G.scene.npcPos[c.i], def = G.scene.npcs[c.i]; if (!f || !n || !def) return;
+  const entry = { id: 'jack~' + c.i + '~' + Date.now(), type: n.type, color: def.color, x: n.x, z: n.z, h: n.h };
+  G.scene.takeNPC(c.i, G.serverSec || 0); f.anim = { type: 'enter', t: 0, fx: f.x, fz: f.z, tx: entry.x, tz: entry.z, entry };
+  (G.jackers || (G.jackers = [])).push({ key: 'jk' + c.i + Date.now(), x: n.x + Math.cos(n.h) * 2.2, z: n.z - Math.sin(n.h) * 2.2, h: n.h + (Math.random() < 0.5 ? 1.2 : -1.2), t: 0, color: ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#d35400'][c.i % 5] });
+  toast('You pulled the driver out! Take the vehicle', 2200);
+  if (!(G.story && G.story.active) && (G.police.stars || 0) < 1) setStars(1, 'carjack');
+}
+function jackStep(dt) {
+  const L = G.jackers; if (L) for (let i = L.length - 1; i >= 0; i--) { const j = L[i]; j.t += dt; const run = j.t < 0.7 ? 0 : 5.8; j.x += Math.sin(j.h) * run * dt; j.z += Math.cos(j.h) * run * dt; j.y = G.world.heightAt(j.x, j.z); j.ph = (j.ph || 0) + dt * 11;
+    if (j.t > 9) { G.chars.remove(j.key); L.splice(i, 1); } else G.chars.set(j.key, { x: j.x, y: j.y, z: j.z, h: j.h, moving: run ? 1.3 : 0.2, phase: j.ph, color: j.color, pants: '#222a35', rig: 'man2', air: j.t < 0.7 }); }
+  const f = G.foot; if (f && !f.anim && !G.ride && (G.hintT = (G.hintT || 0) - dt) < 0 && !G.lot.nearest(f.x, f.z) && npcCandidate()) { G.hintT = 7; toast('Press E to pull the driver out and take this vehicle', 2200); }
 }
 function onEnterReply(m) {
   const f = G.foot; if (!f || f.anim) return; if (!m.ok) { toast('Someone else got in first', 1800); return; }
@@ -527,7 +546,7 @@ function lawStep(dt, tg) {
 }
 function stepSim(dt) {
   const v = G.veh, inp = G.foot || G.arrest || G.dead || (G.storyC && G.storyC.cine) ? PARK : readInput(dt);
-  v.step(dt, inp); footStep(dt); arrestStep(dt); const tg = G.foot ? footProxy : v;
+  v.step(dt, inp); footStep(dt); jackStep(dt); arrestStep(dt); const tg = G.foot ? footProxy : v;
   lawStep(dt, tg);
   for (const ev of G.crowd.update(dt, tg)) onHit(ev);
   { if (G.police.active) G.lastStars = G.police.stars; const res = G.police.update(dt, tg); if (res) policeResult(res); policeBump(v); }
@@ -656,6 +675,7 @@ function frame(now) {
   if (!G.paused) { G.acc += dt; let n = 0; while (G.acc >= FIXED_DT && n < MAX_STEPS) { stepSim(FIXED_DT); G.acc -= FIXED_DT; n++; } if (n === MAX_STEPS) G.acc = 0; }
   const v = G.veh, pose = poseOf(clamp(G.acc / FIXED_DT, 0, 1), G.tmp.pose || (G.tmp.pose = {}));
   const serverSec = (G.net ? G.net.now() : Date.now()) / 1000, tod = todOf(serverSec + (G.dayShift || 0));
+  G.serverSec = serverSec; G.scene.footPos = G.foot && !G.foot.anim && !G.ride ? G.foot : null;
   const info = G.scene.update(dt, { x: pose.x, y: pose.y, z: pose.z }, tod, serverSec);
   G.scene.updateChunks(pose.x, pose.z, 1);
   const lightsOn = G.lights === 'on' || (G.lights === 'auto' && info.night);
@@ -693,7 +713,7 @@ const H = {
     const roles = G.net && G.net.story ? G.net.story.roles : {}, myRole = G.storyC.myRole, i = Math.max(0, ['arjun', 'karthik'].indexOf(myRole));
     const P = G.foot || G.veh; if (Math.hypot(P.x - A.x, P.z - A.z) > 60) { if (!G.foot) exitVehicle(true); const a = i * 1.57, x = A.x + Math.cos(a) * 3, z = A.z + Math.sin(a) * 3; G.foot.anim = null; G.foot.x = x; G.foot.z = z; G.foot.y = G.world.heightAt(x, z); G.veh.x = x + 4; G.veh.z = z + 4; G.lot.dyn.forEach(e => { if (e.id === G.myPark) { e.x = x + 5; e.z = z + 5; } }); G.camInit = false; }
     else if (!G.foot) exitVehicle(true);
-    G.scene.updateChunks(A.x, A.z, 60); G.joy && G.joy.release();
+    G.lot.seed(A.x, A.z, 10); G.scene.updateChunks(A.x, A.z, 60); G.joy && G.joy.release();
   },
 };
 function onEv(k, d, from) { if (k === 'ai') { if (G.net.isHost) return; G.aiGot = performance.now(); G.aiNet = G.aiNet || {}; for (const [r, x, z, h, mv, rd] of d.a) { const o = G.aiNet[r]; if (!o) G.aiNet[r] = { x, z, h, tx: x, tz: z, th: h, tm: mv, moving: mv, phase: 0, riding: !!rd }; else { o.tx = x; o.tz = z; o.th = h; o.tm = mv; o.riding = !!rd; if (Math.hypot(x - o.x, z - o.z) > 20) { o.x = x; o.z = z; } } } for (const r of Object.keys(G.aiNet)) if (!d.a.some(q => q[0] === r)) delete G.aiNet[r]; return; }

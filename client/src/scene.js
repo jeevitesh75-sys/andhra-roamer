@@ -450,11 +450,16 @@ export class Scene3D {
     }
     this.npcPos = this.npcs.map(() => ({ x: 0, z: 0, y: 0, h: 0 })); this._rp = {};
   }
+  takeNPC(i, serverSec) { const n = this.npcs[i]; if (!n) return; n.goneUntil = serverSec + 150; if (this.models.has('npc' + n.id)) this.removeModel('npc' + n.id); }
   /** positions are analytic (ping-pong along each road) so every client sees the same ambient traffic */
   updateNPCs(serverSec, focus, night) {
-    const w = this.world;
+    const w = this.world, dt = Math.min(0.1, this._dt || 0.016), fp = this.footPos;
     this.npcs.forEach((n, i) => {
-      const L = n.road.len, ph = (n.s0 + n.speed * serverSec) % (2 * L), fwd = ph < L, s = fwd ? ph : 2 * L - ph;
+      if (n.goneUntil) { if (serverSec < n.goneUntil) { const q = this.npcPos[i]; q.x = q.z = -1e9; if (this.models.has('npc' + n.id)) this.removeModel('npc' + n.id); return; } n.goneUntil = 0; }
+      if (n.v === undefined) { n.v = 1; n.off = 0; }
+      // a person on foot standing near the road makes traffic brake to a stop (so you can jack it)
+      { const q = this.npcPos[i]; let want = 1; if (fp) { const d = Math.hypot(q.x - fp.x, q.z - fp.z); if (d < 26) want = Math.max(0, Math.min(1, (d - 5) / 18)); } n.v += (want - n.v) * Math.min(1, dt * (want < n.v ? 2.2 : 1.0)); n.off -= n.speed * (1 - n.v) * dt; }
+      const L = n.road.len, ph = (((n.s0 + n.off + n.speed * serverSec) % (2 * L)) + 2 * L) % (2 * L), fwd = ph < L, s = fwd ? ph : 2 * L - ph;
       const p = w.roadPoint(n.road, s, fwd ? 2.6 : -2.6, this._rp);           // drive on the left of travel
       const pos = this.npcPos[i]; pos.x = p.x; pos.z = p.z; pos.y = p.y; pos.h = fwd ? p.h : p.h + Math.PI; pos.type = n.type;
       const d2 = (p.x - focus.x) ** 2 + (p.z - focus.z) ** 2, key = 'npc' + n.id;
@@ -502,7 +507,7 @@ export class Scene3D {
     return { night: dayf < 0.35, el };
   }
   update(dt, focus, tod, serverSec, headlightsOn) {
-    const T = this.T; this.time += dt;
+    const T = this.T; this.time += dt; this._dt = dt;
     const info = this.applyTime(tod, focus);
     this.sky.position.copy(this.camera.position); this.sky.scale.setScalar(3000);
     this.water.position.x = Math.round(focus.x / 60) * 60; this.water.position.z = Math.round(focus.z / 60) * 60;
