@@ -273,12 +273,31 @@ export class Scene3D {
     this.aniI = { body: mkI(new T.BoxGeometry(0.7, 0.8, 1.5), this.aniMax), legs: mkI(new T.BoxGeometry(0.5, 0.65, 1.2), this.aniMax), head: mkI(new T.BoxGeometry(0.32, 0.4, 0.55), this.aniMax) };
     this._pd = new T.Object3D(); this._pp = new T.Object3D(); this._pm = new T.Matrix4(); this._pc = new T.Color();
   }
+  _pfSlot(kind, idx, tpl) {
+    const T = this.T, pool = (this._pfPool || (this._pfPool = {}))[kind] || (this._pfPool[kind] = []); let s = pool[idx];
+    if (!s || s.tpl !== tpl) {
+      if (s) this.scene.remove(s.g);
+      const g = new T.Group(), yawG = new T.Group(), inner = tpl.scene.clone(true); inner.scale.setScalar(tpl.scale); inner.position.set(-tpl.cx, tpl.footY, -tpl.cz); yawG.rotation.y = tpl.yaw || 0; yawG.add(inner); g.add(yawG);
+      g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = true; } }); this.scene.add(g); s = pool[idx] = { g, tpl };
+    }
+    return s;
+  }
   setWaypoint(t) { if (!t) { this.wpBeacon.visible = false; return; } this.wpBeacon.visible = true; this.wpBeacon.position.set(t.x, 0, t.z); }
   /** list of {kind:'human'|'cow'|'dog'|'goat', x,z,h, lift, lie (0..1 fallen), phase, c1, c2} */
   updatePeds(list) {
     const P = this._pp, d = this._pd, M = this._pm, col = this._pc; let hn = 0, an = 0;
     const part = (im, i, ox, oy, oz, sx, sy, sz, c) => { d.position.set(ox, oy, oz); d.rotation.set(0, 0, 0); d.scale.set(sx, sy, sz); d.updateMatrix(); M.multiplyMatrices(P.matrix, d.matrix); im.setMatrixAt(i, M); if (c) { col.set(c); im.setColorAt(i, col); } };
+    const pf = this.assets && this.assets.pf, cnt = { human: 0, cow: 0, dog: 0, goat: 0 }, CAP = { human: 28, cow: 10, dog: 8, goat: 10 };
     for (const p of list) {
+      if (pf) {   // real Polyfork models for the nearest people/animals (pooled, bobbing/swaying as they walk); the box figures remain as the overflow
+        const kind = p.kind, tl = kind === 'human' ? ((p.sc || 1) < 0.8 && pf.kids.length ? pf.kids : pf.humans) : pf.animals[kind];
+        if (tl && tl.length && cnt[kind] < CAP[kind]) {
+          let hsh = 0; const key = String(p.c1) + String(p.c2); for (let i = 0; i < key.length; i++) hsh = (hsh * 31 + key.charCodeAt(i)) >>> 0;
+          const tpl = tl[hsh % tl.length], slot = this._pfSlot(kind, cnt[kind]++, tpl), sc = kind === 'human' ? Math.min(1.3, (p.sc || 1) * ((p.sc || 1) < 0.8 ? 1.2 : 1)) : 1;
+          const bobY = p.lie ? 0 : Math.abs(Math.sin((p.phase || 0))) * (kind === 'human' ? 0.05 : 0.03);
+          slot.g.visible = true; slot.g.position.set(p.x, (p.lift || 0) + bobY, p.z); slot.g.rotation.set(-(p.lie || 0) * 1.45, p.h, Math.sin(p.phase || 0) * 0.035); slot.g.scale.setScalar(sc); continue;
+        }
+      }
       P.position.set(p.x, p.lift || 0, p.z); P.rotation.order = 'YXZ'; P.rotation.set(-(p.lie || 0) * 1.45, p.h, 0); P.scale.set(1, 1, 1); P.updateMatrix();
       const bob = p.lie ? 0 : Math.sin(p.phase || 0) * 0.04;
       if (p.kind === 'human') { if (hn >= this.pedMax) continue; const sc = p.sc || 1; P.scale.set(sc, sc, sc); P.updateMatrix();
@@ -286,6 +305,7 @@ export class Scene3D {
       else { if (an >= this.aniMax) continue; const k = p.kind === 'cow' ? 1 : p.kind === 'goat' ? 0.55 : 0.36; P.scale.set(k, k, k); P.updateMatrix();
         part(this.aniI.legs, an, 0, 0.3, 0, 1, 1, 1, p.c2); part(this.aniI.body, an, 0, 0.98 + bob, 0, 1, 1, 1, p.c1); part(this.aniI.head, an, 0, 1.35 + bob, 0.95, 1, 1, 1, p.c1); an++; }
     }
+    if (this._pfPool) for (const k of Object.keys(this._pfPool)) { const pool = this._pfPool[k]; for (let i = cnt[k] || 0; i < pool.length; i++) if (pool[i]) pool[i].g.visible = false; }
     for (const im of [...Object.values(this.pedI)]) { im.count = hn; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
     for (const im of [...Object.values(this.aniI)]) { im.count = an; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
   }

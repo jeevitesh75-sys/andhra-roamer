@@ -5,6 +5,7 @@
 // Everything is optional: if three's GLTFLoader or a file is missing the game keeps using the built-in box models.
 // Vehicle units: 1 = 1 metre. Local frame: +z forward, +y up, +x left (same as models.js).
 
+import { PF_VEHICLES, PF_SITES, PF_HUMANS, PF_KIDS, PF_ANIMALS } from './pfpack.js';
 const U = rel => new URL('../assets/models/' + rel, import.meta.url).href;
 
 export const FILES = {
@@ -86,7 +87,8 @@ function splitWheels(T, root, cyl) {
 function buildVehicleTemplate(T, gltf, cfg) {
   const root = gltf.scene;
   if (cfg.cyl) splitWheels(T, root, cfg.cyl);
-  const holder = new T.Group(); holder.add(root); holder.rotation.set(cfg.rotX || 0, cfg.rotY || 0, 0); holder.updateMatrixWorld(true);
+  let autoRot = 0; if (cfg.auto) { root.updateMatrixWorld(true); const b0 = new T.Box3().setFromObject(root).getSize(new T.Vector3()); if (b0.x > b0.z * 1.15) autoRot = Math.PI / 2; }   // length axis -> +z (front assumed at +z / glTF default)
+  const holder = new T.Group(); holder.add(root); holder.rotation.set(cfg.rotX || 0, (cfg.rotY || 0) + autoRot, 0); holder.updateMatrixWorld(true);
   const raw = new T.Box3().setFromObject(holder), size = raw.getSize(new T.Vector3()), s = cfg.len / size.z;
   holder.scale.set(s * (cfg.sx || 1), s, s); holder.updateMatrixWorld(true);
   const box = new T.Box3().setFromObject(holder), ctr = box.getCenter(new T.Vector3());
@@ -225,6 +227,7 @@ export async function loadAssets(T, onProgress = () => {}) {
   for (const [k, f] of [['cowboy', 'hatCowboy'], ['top', 'hatTop']]) if (gl[f]) { try { A.hats[k] = buildHat(T, gl[f]); } catch (e) { console.warn('hat setup failed', k, e); } }
   A.sites = {};
   for (const cfg of SITES) { const g = gl[cfg.file]; if (!g) continue; try { A.sites[cfg.key] = buildSite(T, g, cfg); } catch (e) { console.warn('site setup failed', cfg.key, e); A.notes.push('site ' + cfg.key); } }
+  try { await loadPF(T, loader, A); } catch (e) { console.warn('polyfork pack failed', e); A.notes.push('pf failed'); }
   A.ok = !!(Object.keys(A.veh).length || A.char || A.treeGeo);
   return A;
 }
@@ -272,4 +275,29 @@ export function collectSharedMaterials(assets, out) {
   const seen = new Set();
   for (const list of Object.values(assets.veh || {})) for (const e of list) e.tpl.traverse(o => { if (o.isMesh && o.material && !seen.has(o.material)) { seen.add(o.material); out.push(o.material); } });
   return out;
+}
+
+/** optional Polyfork pack (see tools/get-polyfork.sh): extra cars/bikes/buses/lorries, civic buildings, street people and animals */
+async function loadPF(T, loader, A) {
+  let man = null; try { const r = await fetch(U('pf/manifest.json'), { cache: 'no-cache' }); if (r.ok) man = await r.json(); } catch (e) { }
+  if (!man || !Array.isArray(man.ids) || !man.ids.length) return;
+  const gl = {}; await Promise.all(man.ids.map(id => new Promise(res => loader.load(U('pf/' + id + '.glb'), g => { gl[id] = g; res(); }, undefined, e => { A.notes.push('pf ' + id); res(); }))));
+  let nv = 0, ns = 0;
+  for (const v of PF_VEHICLES) {
+    const g = gl[v.id]; if (!g) continue;
+    const cfg = { file: 'pf', auto: true, rotY: 0, len: v.len, wheelRe: /wheel|tyre|tire/i, paintRe: /body|paint|primary|livery|main/i, tint: 0.85 };
+    try { const tpl = buildVehicleTemplate(T, g, cfg); (A.veh[v.type] || (A.veh[v.type] = [])).push({ tpl, cfg }); nv++; } catch (e) { console.warn('pf vehicle', v.id, e); }
+  }
+  for (const s of PF_SITES) {
+    const g = gl[s.id]; if (!g) continue; const cfg = { key: s.key, size: s.size, dim: 'xz', anchor: s.anchor, side: s.side, vis: 700, rot: Math.PI };
+    try { A.sites[cfg.key] = buildSite(T, g, cfg); if (!SITES.some(x => x.key === cfg.key)) SITES.push(cfg); ns++; } catch (e) { console.warn('pf site', s.id, e); }
+  }
+  const norm = (g, H) => { const sc = g.scene; sc.updateMatrixWorld(true); const b = new T.Box3().setFromObject(sc), sz = b.getSize(new T.Vector3()), c = b.getCenter(new T.Vector3()); if (!(sz.y > 0)) return null; const k = H / sz.y; return { scene: sc, scale: k, footY: -b.min.y * k, cx: c.x * k, cz: c.z * k, yaw: 0 }; };
+  const normLen = (g, L) => { const sc = g.scene; sc.updateMatrixWorld(true); const b = new T.Box3().setFromObject(sc), sz = b.getSize(new T.Vector3()), c = b.getCenter(new T.Vector3()), len = Math.max(sz.x, sz.z); if (!(len > 0)) return null; const k = L / len; return { scene: sc, scale: k, footY: -b.min.y * k, cx: c.x * k, cz: c.z * k, yaw: sz.x > sz.z * 1.15 ? Math.PI / 2 : 0 }; };
+  A.pf = { humans: [], kids: [], animals: { cow: [], dog: [], goat: [] } };
+  for (const id of PF_HUMANS) if (gl[id]) { const n = norm(gl[id], 1.76); if (n) A.pf.humans.push(n); }
+  for (const id of PF_KIDS) if (gl[id]) { const n = norm(gl[id], 1.15); if (n) A.pf.kids.push(n); }
+  for (const [kind, L] of [['cow', 2.1], ['dog', 0.95], ['goat', 1.1]]) for (const id of PF_ANIMALS[kind] || []) if (gl[id]) { const n = normLen(gl[id], L); if (n) A.pf.animals[kind].push(n); }
+  A.notes.push(`polyfork: ${nv} vehicles, ${ns} buildings, ${A.pf.humans.length + A.pf.kids.length} people, ${Object.values(A.pf.animals).reduce((a, l) => a + l.length, 0)} animals`);
+  console.log(A.notes[A.notes.length - 1]);
 }
