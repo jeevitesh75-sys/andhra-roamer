@@ -33,7 +33,7 @@ export class Sites {
         const g = tpl.clone(true), h = a.h || 0;
         // step sideways off the road centre line (road heading h: forward = (sin h, cos h))
         const sx = a.x + Math.cos(h) * cfg.side, sz = a.z - Math.sin(h) * cfg.side;
-        g.position.set(sx, G.world.heightAt(sx, sz), sz); g.rotation.y = (cfg.road ? h : h + Math.PI / 2) + (cfg.rot || 0);
+        g.position.set(sx, G.world.heightAt(sx, sz), sz); g.rotation.y = cfg.road ? h : h + Math.PI / 2;
         this.scene.add(g); this.live.set(cfg.key, g);
         if (cfg.solid !== false) { g.updateMatrixWorld(true); const bb = new this.T.Box3().setFromObject(g), k = cfg.key === 'phone' ? 0.8 : 0.88; if (bb.max.x - bb.min.x > 1 && bb.max.x - bb.min.x < 80) this._boxes(cfg.key, [{ i: -2100, x: (bb.max.x + bb.min.x) / 2, z: (bb.max.z + bb.min.z) / 2, hw: (bb.max.x - bb.min.x) / 2 * k, hd: (bb.max.z - bb.min.z) / 2 * k, c: 1, s: 0, h: 8, cls: 9, y: 0 }]); }
       } else if (d > cfg.vis + 80 && o) { this.scene.remove(o); this.live.delete(cfg.key); this.cols.delete(cfg.key); }
