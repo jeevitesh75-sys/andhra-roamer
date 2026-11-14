@@ -124,3 +124,15 @@ v3p: hugs/kisses now pose the skeleton - `_embrace()` in characters.js rotates b
 - Vehicles wherever you spawn (v3w: ids fixed so the server accepts them): every story chapter / cutscene drop-in now seeds 8-10 parked cars, bikes (and sometimes a bus/lorry) on the roads around you (ParkedLot.seed).
 - Vice-City carjacking: walk into the road and moving traffic brakes to a stop; press E (or the action button) next to any traffic vehicle to pull the driver out - he runs off - and drive away in it (1 wanted star outside story missions). The car comes back into traffic after ~2.5 minutes.
 - tests/carjack-test.mjs
+
+## v3x - Polyfork model pack (optional, free)
+Run once from the project root (Termux: `pkg install curl`): `bash tools/get-polyfork.sh` - it downloads 50 free GLBs from polyfork.dev into `client/assets/models/pf/` and writes `pf/manifest.json`.
+Then the game uses them automatically (anything missing falls back to the old models):
+- 23 extra vehicles in traffic/parked: taxi, hatchback, SUV, minivan, jeep, sedan, kei van, pickup, police cruiser, delivery/flatbed/goods lorries, garbage truck, tow truck, ambulance, fire engine, city/school/shuttle/mini/articulated buses, moped, touring motorcycle.
+- Civic buildings at fixed places: police station (story station), government hospital, fire station, bank, school, temple, shops, clock tower, market stall (anchors in storydata ANCHORS).
+- Street people (8 adults + 2 kids) and animals (cow/ox, dogs, goat/sheep) replace the box figures for the nearest 14 people and 14 animals.
+- Edit the list in tools/pf-ids.txt + src/pfpack.js to use other models. Vehicles are assumed to face +Z (or are auto-turned if their length is along X).
+
+## Android APK (not a PWA)
+Push to GitHub -> Actions tab -> "Build Android APK" -> download artifact `AndhraUnderworld-apk` -> install app-debug.apk.
+Game files are bundled inside the app (Capacitor). Settings -> Frame rate 30 = least heat.

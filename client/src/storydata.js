@@ -51,6 +51,17 @@ export const ANCHORS = {
   port:        { label: "The King's escape port", dist: 5600, ang: 5.0 },
   portGate:    { label: 'Port gate', near: 'port', dist: 85, ang: 3.1 },
   hideout:     { label: 'Hideout', dist: 3500, ang: 5.9 },
+  // civic buildings (Polyfork models, see pfpack.js) - scenery only
+  hospital:    { label: 'Government Hospital', dist: 700, ang: 1.1 },
+  fireStn:     { label: 'Fire Station', dist: 900, ang: 3.0 },
+  bank:        { label: 'Andhra Bank', dist: 450, ang: 4.2 },
+  school:      { label: 'Government School', dist: 1100, ang: 0.2 },
+  temple:      { label: 'Temple', dist: 260, ang: 5.1 },
+  shop1:       { label: 'Corner Shop', dist: 90, ang: 1.0 },
+  shop2:       { label: 'Shop', dist: 180, ang: 2.6 },
+  shop3:       { label: 'Shop', dist: 260, ang: 3.4 },
+  clock:       { label: 'Clock Tower', dist: 520, ang: 5.8 },
+  market:      { label: 'Market', dist: 360, ang: 4.8 },
 };
 
 const C = (who, text) => ({ who, text });

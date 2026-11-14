@@ -125,14 +125,15 @@ export function createModels(T, assets = null) {
   if (assets && assets.veh) { try { collectSharedMaterials(assets, envMats); } catch (e) { console.warn(e); } }
   const hashStr = str => { let h = 0; for (const ch of String(str)) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h); };
   /** real glTF model for this vehicle type if it loaded (bikes: two models, picked by colour); null -> use the built-in box model */
-  function createGlb(type, colorHex) {
-    const list = assets && assets.veh && assets.veh[type]; if (!list || !list.length) return null;
+  function createGlb(type, colorHex, npc) {
+    let list = assets && assets.veh && assets.veh[type]; if (list && !npc) list = list.filter(e => !e.cfg.pf);   // player / other players / police always keep the original models (Lamborghini, police car)
+    if (!list || !list.length) return null;
     try { return instantiateVehicle(T, list[hashStr(colorHex) % list.length], type, colorHex, paintMats, envMats); }
     catch (e) { console.warn('glb vehicle failed, using built-in model', type, e); return null; }
   }
   /** returns a vehicle model handle */
-  function create(type, colorHex) {
-    const glb = createGlb(type, colorHex); if (glb) return glb;
+  function create(type, colorHex, npc) {
+    const glb = createGlb(type, colorHex, npc); if (glb) return glb;
     const m = BUILD[type](new T.Color(colorHex).getHex());
     m.type = type;
     m.group.traverse(o => { if (o.isMesh) o.frustumCulled = true; });

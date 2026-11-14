@@ -33,8 +33,8 @@ export class Scene3D {
     this.T = T; this.assets = assets; this.world = world; this.canvas = canvas; this.qName = quality; this.q = QUALITY[quality];
     this.time = 0; this.dayf = 1; this.chunks = new Map(); this.cityObjs = new Map(); this.models = new Map(); this.npcModels = new Map();
     this.envMats = []; this.lastEnv = -1; this.buildQueue = [];
-    const r = this.renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.q.pr));
+    const r = this.renderer = new T.WebGLRenderer({ canvas, antialias: !(window.matchMedia && matchMedia('(pointer: coarse)').matches), powerPreference: 'default' });
+    this.dyn = 1; r.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.q.pr) * this.dyn);
     r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
     r.shadowMap.enabled = this.q.shadows; r.shadowMap.type = T.PCFSoftShadowMap;
     this.maxAniso = r.capabilities.getMaxAnisotropy ? Math.min(8, r.capabilities.getMaxAnisotropy()) : 1;
@@ -273,12 +273,31 @@ export class Scene3D {
     this.aniI = { body: mkI(new T.BoxGeometry(0.7, 0.8, 1.5), this.aniMax), legs: mkI(new T.BoxGeometry(0.5, 0.65, 1.2), this.aniMax), head: mkI(new T.BoxGeometry(0.32, 0.4, 0.55), this.aniMax) };
     this._pd = new T.Object3D(); this._pp = new T.Object3D(); this._pm = new T.Matrix4(); this._pc = new T.Color();
   }
+  _pfSlot(kind, idx, tpl) {
+    const T = this.T, pool = (this._pfPool || (this._pfPool = {}))[kind] || (this._pfPool[kind] = []); let s = pool[idx];
+    if (!s || s.tpl !== tpl) {
+      if (s) this.scene.remove(s.g);
+      const g = new T.Group(), yawG = new T.Group(), inner = tpl.scene.clone(true); inner.scale.setScalar(tpl.scale); inner.position.set(-tpl.cx, tpl.footY, -tpl.cz); yawG.rotation.y = tpl.yaw || 0; yawG.add(inner); g.add(yawG);
+      g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = true; } }); this.scene.add(g); s = pool[idx] = { g, tpl };
+    }
+    return s;
+  }
   setWaypoint(t) { if (!t) { this.wpBeacon.visible = false; return; } this.wpBeacon.visible = true; this.wpBeacon.position.set(t.x, 0, t.z); }
   /** list of {kind:'human'|'cow'|'dog'|'goat', x,z,h, lift, lie (0..1 fallen), phase, c1, c2} */
   updatePeds(list) {
     const P = this._pp, d = this._pd, M = this._pm, col = this._pc; let hn = 0, an = 0;
     const part = (im, i, ox, oy, oz, sx, sy, sz, c) => { d.position.set(ox, oy, oz); d.rotation.set(0, 0, 0); d.scale.set(sx, sy, sz); d.updateMatrix(); M.multiplyMatrices(P.matrix, d.matrix); im.setMatrixAt(i, M); if (c) { col.set(c); im.setColorAt(i, col); } };
+    const pf = this.assets && this.assets.pf, cnt = { human: 0, cow: 0, dog: 0, goat: 0 }, CAP = { human: 14, cow: 5, dog: 4, goat: 5 };
     for (const p of list) {
+      if (pf) {   // real Polyfork models for the nearest people/animals (pooled, bobbing/swaying as they walk); the box figures remain as the overflow
+        const kind = p.kind, tl = kind === 'human' ? ((p.sc || 1) < 0.8 && pf.kids.length ? pf.kids : pf.humans) : pf.animals[kind];
+        if (tl && tl.length && cnt[kind] < CAP[kind]) {
+          let hsh = 0; const key = String(p.c1) + String(p.c2); for (let i = 0; i < key.length; i++) hsh = (hsh * 31 + key.charCodeAt(i)) >>> 0;
+          const tpl = tl[hsh % tl.length], slot = this._pfSlot(kind, cnt[kind]++, tpl), sc = kind === 'human' ? Math.min(1.3, (p.sc || 1) * ((p.sc || 1) < 0.8 ? 1.2 : 1)) : 1;
+          const bobY = p.lie ? 0 : Math.abs(Math.sin((p.phase || 0))) * (kind === 'human' ? 0.05 : 0.03);
+          slot.g.visible = true; slot.g.position.set(p.x, (p.lift || 0) + bobY, p.z); slot.g.rotation.set(-(p.lie || 0) * 1.45, p.h, Math.sin(p.phase || 0) * 0.035); slot.g.scale.setScalar(sc); continue;
+        }
+      }
       P.position.set(p.x, p.lift || 0, p.z); P.rotation.order = 'YXZ'; P.rotation.set(-(p.lie || 0) * 1.45, p.h, 0); P.scale.set(1, 1, 1); P.updateMatrix();
       const bob = p.lie ? 0 : Math.sin(p.phase || 0) * 0.04;
       if (p.kind === 'human') { if (hn >= this.pedMax) continue; const sc = p.sc || 1; P.scale.set(sc, sc, sc); P.updateMatrix();
@@ -286,6 +305,7 @@ export class Scene3D {
       else { if (an >= this.aniMax) continue; const k = p.kind === 'cow' ? 1 : p.kind === 'goat' ? 0.55 : 0.36; P.scale.set(k, k, k); P.updateMatrix();
         part(this.aniI.legs, an, 0, 0.3, 0, 1, 1, 1, p.c2); part(this.aniI.body, an, 0, 0.98 + bob, 0, 1, 1, 1, p.c1); part(this.aniI.head, an, 0, 1.35 + bob, 0.95, 1, 1, 1, p.c1); an++; }
     }
+    if (this._pfPool) for (const k of Object.keys(this._pfPool)) { const pool = this._pfPool[k]; for (let i = cnt[k] || 0; i < pool.length; i++) if (pool[i]) pool[i].g.visible = false; }
     for (const im of [...Object.values(this.pedI)]) { im.count = hn; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
     for (const im of [...Object.values(this.aniI)]) { im.count = an; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
   }
@@ -388,10 +408,10 @@ export class Scene3D {
 
   /* --------------------------------- vehicles & NPCs --------------------------------- */
   /** get/create a model for key; recreates if type changed */
-  model(key, type, color) {
+  model(key, type, color, npc) {
     let m = this.models.get(key);
     if (m && m.type !== type) { this.scene.remove(m.group); m.dispose(); m = null; }
-    if (!m) { m = this.models3d.create(type, color); m.prevX = null; m.group.traverse(o => { if (o.isMesh) o.receiveShadow = false; }); this.scene.add(m.group); this.models.set(key, m); }
+    if (!m) { m = this.models3d.create(type, color, npc); m.prevX = null; m.group.traverse(o => { if (o.isMesh) o.receiveShadow = false; }); this.scene.add(m.group); this.models.set(key, m); }
     if (m.color !== color) m.setColor(color);
     return m;
   }
@@ -442,7 +462,7 @@ export class Scene3D {
     const roads = w.trafficRoads || w.roads.filter(r => r.kind !== 'ghat');
     const colors = ['#e74c3c', '#f1c40f', '#ecf0f1', '#3498db', '#2ecc71', '#e67e22', '#9b59b6', '#bdc3c7', '#1abc9c', '#c0392b'];
     const near = roads.filter(r => { const x = r.pts[0], z = r.pts[1]; for (const c of w.cities) if ((c.x - x) ** 2 + (c.z - z) ** 2 < 7000 * 7000) return true; return false; }), pool = near.length > 40 ? near : roads;
-    for (let i = 0; i < 480; i++) {
+    for (let i = 0; i < 340; i++) {
       const road = pool[Math.floor(rnd() * pool.length)], r = rnd();
       const type = r < 0.5 ? 'car' : r < 0.78 ? 'bike' : r < 0.9 ? 'bus' : 'lorry';
       const speed = type === 'car' ? 17 + rnd() * 10 : type === 'bike' ? 15 + rnd() * 9 : type === 'bus' ? 13 + rnd() * 6 : 11 + rnd() * 6;
@@ -454,6 +474,7 @@ export class Scene3D {
   /** positions are analytic (ping-pong along each road) so every client sees the same ambient traffic */
   updateNPCs(serverSec, focus, night) {
     const w = this.world, dt = Math.min(0.1, this._dt || 0.016), fp = this.footPos;
+    let shown = 0;   // cap the number of drawn traffic vehicles (each is a real 3D model) - big frame-rate saver on phones
     this.npcs.forEach((n, i) => {
       if (n.goneUntil) { if (serverSec < n.goneUntil) { const q = this.npcPos[i]; q.x = q.z = -1e9; if (this.models.has('npc' + n.id)) this.removeModel('npc' + n.id); return; } n.goneUntil = 0; }
       if (n.v === undefined) { n.v = 1; n.off = 0; }
@@ -463,7 +484,7 @@ export class Scene3D {
       const p = w.roadPoint(n.road, s, fwd ? 2.6 : -2.6, this._rp);           // drive on the left of travel
       const pos = this.npcPos[i]; pos.x = p.x; pos.z = p.z; pos.y = p.y; pos.h = fwd ? p.h : p.h + Math.PI; pos.type = n.type;
       const d2 = (p.x - focus.x) ** 2 + (p.z - focus.z) ** 2, key = 'npc' + n.id;
-      if (d2 < 650 * 650) { const m = this.model(key, n.type, n.color); this.placeModel(m, { ...pos, lights: night, steer: 0 }); m.group.visible = true; }
+      if (d2 < 330 * 330 && shown < 26) { shown++; const m = this.model(key, n.type, n.color, true); this.placeModel(m, { ...pos, lights: night, steer: 0 }); m.group.visible = true; }
       else if (this.models.has(key)) this.removeModel(key);
     });
   }
@@ -532,11 +553,13 @@ export class Scene3D {
   }
   setQuality(name) {
     this.qName = name; this.q = QUALITY[name];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.q.pr));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.q.pr) * (this.dyn || 1));
     this.renderer.shadowMap.enabled = this.q.shadows; this.sun.castShadow = this.q.shadows;
     this.sun.shadow.mapSize.set(this.q.shadowSize, this.q.shadowSize); if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; }
     this.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
   }
+  /** dynamic resolution: f in 0.55..1 scales the render resolution without touching the HUD */
+  setDyn(f) { f = Math.max(0.55, Math.min(1, f)); if (Math.abs(f - this.dyn) < 0.01) return; this.dyn = f; this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.q.pr) * f); this.resize(); }
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();

@@ -1,0 +1,8 @@
+{
+  "appId": "com.andhra.underworld",
+  "appName": "Andhra Underworld",
+  "webDir": "www",
+  "backgroundColor": "#000000",
+  "android": { "allowMixedContent": false, "webContentsDebuggingEnabled": false },
+  "server": { "androidScheme": "https" }
+}

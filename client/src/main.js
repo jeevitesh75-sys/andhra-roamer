@@ -99,7 +99,7 @@ async function startGame() {
   progress('Rendering the world...', 0.5);
   const first = !G.scene;
   if (first) {
-    const q = G.save.quality || (matchMedia('(max-width: 800px)').matches ? 'low' : 'medium');
+    const q = G.save.quality || ((matchMedia('(max-width: 800px)').matches || matchMedia('(pointer: coarse)').matches) ? 'low' : 'medium');
     try { G.scene = new Scene3D(G.T, $('game'), G.world, q, G.assets); } catch (e) { $('ldErr').textContent = 'Graphics failed to start: ' + e.message; console.error(e); return; }
     G.veh = new Vehicle(prof.veh, G.world); G.crowd = new Crowd(G.world); G.police = new Police(G.world); G.wp = null;
     G.law = new Law(G.world); G.lot = new ParkedLot(G.world); G.lot.seed(G.veh.x, G.veh.z, 8); G.chars = new Characters(G.T, G.scene.scene, G.assets); G.sites = new Sites(G.T, G.scene.scene, G.assets); G.vcolor = prof.color; G.hp = 100; G.storyC = new StoryClient(G, H);
@@ -256,6 +256,7 @@ function initHud() {
   { const si = $('serverUrl'); let sv = ''; try { sv = localStorage.getItem('serverUrl') || ''; } catch (e) { /* ignore */ } si.value = sv; $('serverSave').onclick = () => { let u = si.value.trim(); if (u && !/^wss?:\/\//.test(u)) u = 'wss://' + u.replace(/^https?:\/\//, ''); try { if (u) localStorage.setItem('serverUrl', u); else localStorage.removeItem('serverUrl'); } catch (e) { /* ignore */ } toast('Saved. Reloading...', 1200); setTimeout(() => location.reload(), 700); }; }
   $('voiceVol').oninput = e => { G.voiceVol = +e.target.value; if (G.voice) G.voice.setVolume(G.voiceVol); };
   $('pauseLeave').onclick = () => { closeModals(); G.running = false; G.net.disconnect(); clearTags(); $('hud').hidden = true; $('menu').hidden = false; G.audio.update(0, 0, 0, 'car'); persist(); };
+  { const fc = $('fpsCap'); G.fpsCap = Number(G.save.fps) || (matchMedia('(pointer: coarse)').matches ? 30 : 60); if (fc) { fc.value = String(G.fpsCap); fc.onchange = e => { G.fpsCap = Number(e.target.value); G.save.fps = G.fpsCap; persist(); }; } }
   $('quality').value = G.scene.qName; $('quality').onchange = e => { G.scene.setQuality(e.target.value); persist(); };
   $('volume').oninput = e => G.audio.setVolume(Number(e.target.value));
   addEventListener('beforeunload', persist);
@@ -670,6 +671,8 @@ function updateHud(dt, info, serverSec) {
 function frame(now) {
   requestAnimationFrame(frame);
   if (!G.running) return;
+  if (document.hidden) { G.lastT = now; return; }
+  if (now - G.lastT < 1000 / (G.fpsCap || 60) - 3) return;   // frame cap: 30 fps halves GPU work and heat
   const dt = Math.min(0.1, (now - G.lastT) / 1000); G.lastT = now;
   G.fpsAcc += dt; G.fpsN++; if (G.fpsAcc > 3) { G.fps = G.fpsN / G.fpsAcc; G.fpsAcc = 0; G.fpsN = 0; autoQuality(); }
   if (!G.paused) { G.acc += dt; let n = 0; while (G.acc >= FIXED_DT && n < MAX_STEPS) { stepSim(FIXED_DT); G.acc -= FIXED_DT; n++; } if (n === MAX_STEPS) G.acc = 0; }
@@ -697,8 +700,15 @@ function frame(now) {
   if ((G.saveT += dt) > 6) { G.saveT = 0; persist(); } if ((G.moneyT += dt) > 5) { G.moneyT = 0; if (G.net) G.net.sendMoney(G.earned); }
 }
 function autoQuality() {
-  const order = ['high', 'medium', 'low'], cur = G.scene.qName;
-  if (G.fps < 28 && cur !== 'low' && !G.paused) { const n = order[order.indexOf(cur) + 1]; G.scene.setQuality(n); $('quality').value = n; toast('Low frame rate: graphics set to ' + n, 2500); }
+  const sc = G.scene, cap = G.fpsCap || 60, tgt = Math.min(cap, 60) * 0.9;
+  if (G.paused) return;
+  if (G.fps < tgt * 0.85 && sc.dyn > 0.56) { sc.setDyn(sc.dyn - 0.15); return; }          // 1) shrink resolution first (cheap, invisible-ish)
+  if (G.fps < tgt * 0.8) {                                                                // 2) still slow: lower graphics preset
+    const order = ['high', 'medium', 'low'], cur = sc.qName;
+    if (cur !== 'low') { const n = order[order.indexOf(cur) + 1]; sc.setQuality(n); $('quality').value = n; toast('Low frame rate: graphics set to ' + n, 2500); }
+    return;
+  }
+  if (G.fps > tgt * 0.98 && sc.dyn < 1) sc.setDyn(sc.dyn + 0.05);                         // 3) headroom: creep resolution back up
 }
 
 /* ------------------------------------------------ story / law glue */
